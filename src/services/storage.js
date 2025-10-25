@@ -1,0 +1,93 @@
+import { doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
+import { db, COLLECTIONS } from '../firebase';
+
+export const storage = {
+  async get(collectionName, docId) {
+    try {
+      const docRef = doc(db, collectionName, docId || 'data');
+      const docSnap = await getDoc(docRef);
+      
+      if (docSnap.exists()) {
+        return docSnap.data();
+      }
+      return null;
+    } catch (error) {
+      console.error('Error getting data:', error);
+      throw error;
+    }
+  },
+
+  async set(collectionName, data, docId) {
+    try {
+      const docRef = doc(db, collectionName, docId || 'data');
+      await setDoc(docRef, {
+        data: data,
+        updatedAt: new Date().toISOString()
+      });
+      return true;
+    } catch (error) {
+      console.error('Error setting data:', error);
+      throw error;
+    }
+  },
+
+  async delete(collectionName, docId) {
+    try {
+      const docRef = doc(db, collectionName, docId || 'data');
+      await deleteDoc(docRef);
+      return true;
+    } catch (error) {
+      console.error('Error deleting data:', error);
+      throw error;
+    }
+  }
+};
+
+export const tournamentStorage = {
+  async getTeams() {
+    const result = await storage.get(COLLECTIONS.TEAMS);
+    return result ? result.data : null;
+  },
+
+  async setTeams(teams) {
+    return await storage.set(COLLECTIONS.TEAMS, teams);
+  },
+
+  async getMatches() {
+    const result = await storage.get(COLLECTIONS.MATCHES);
+    return result ? result.data : null;
+  },
+
+  async setMatches(matches) {
+    return await storage.set(COLLECTIONS.MATCHES, matches);
+  },
+
+  async getBonuses() {
+    const result = await storage.get(COLLECTIONS.BONUSES);
+    return result ? result.data : null;
+  },
+
+  async setBonuses(bonuses) {
+    return await storage.set(COLLECTIONS.BONUSES, bonuses);
+  },
+
+  async getAuthSession() {
+    const result = await storage.get(COLLECTIONS.AUTH, 'session');
+    return result ? result.data : null;
+  },
+
+  async setAuthSession(session) {
+    return await storage.set(COLLECTIONS.AUTH, session, 'session');
+  },
+
+  async deleteAuthSession() {
+    return await storage.delete(COLLECTIONS.AUTH, 'session');
+  },
+
+  async resetAll() {
+    await storage.delete(COLLECTIONS.TEAMS);
+    await storage.delete(COLLECTIONS.MATCHES);
+    await storage.delete(COLLECTIONS.BONUSES);
+    return true;
+  }
+};
