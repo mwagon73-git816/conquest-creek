@@ -1,0 +1,38 @@
+import React from 'react';
+import { Trophy, Users, Calendar, TrendingUp, UserPlus } from 'lucide-react';
+
+const TabNavigation = ({ activeTab, setActiveTab }) => {
+  const tabs = [
+    { id: 'leaderboard', icon: Trophy, label: 'Leaderboard' },
+    { id: 'teams', icon: Users, label: 'Teams' },
+    { id: 'players', icon: UserPlus, label: 'Players' },
+    { id: 'entry', icon: Calendar, label: 'Match Entry' },
+    { id: 'matches', icon: TrendingUp, label: 'Matches' }
+  ];
+
+  return (
+    <div className="bg-white rounded-lg shadow-md mb-6 overflow-x-auto">
+      <div className="flex border-b min-w-max">
+        {tabs.map(tab => {
+          const Icon = tab.icon;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex-1 min-w-[120px] px-4 py-3 font-semibold transition flex items-center justify-center gap-2 ${
+                activeTab === tab.id 
+                  ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600' 
+                  : 'text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              <Icon className="w-4 h-4" />
+              <span className="text-sm">{tab.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+export default TabNavigation;
