@@ -1,57 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Trophy, Users, Calendar, TrendingUp, Award, RefreshCw, Plus, Edit, Trash2, Gift, BarChart3, UserPlus, ArrowLeftRight, Activity, X, Check } from 'lucide-react';
+import { tournamentStorage } from './services/storage';
 
-// Mock storage for demo - replace with Firebase in production
-const mockStorage = {
-  async get(key) {
-    try {
-      const result = await window.storage.get(key);
-      return result?.value || null;
-    } catch {
-      return null;
-    }
-  },
-  async set(key, data) {
-    return await window.storage.set(key, data);
-  },
-  async delete(key) {
-    return await window.storage.delete(key);
-  }
-};
-
-const tournamentStorage = {
-  async getTeams() {
-    const result = await mockStorage.get('conquest-teams');
-    return result;
-  },
-  async setTeams(teams) {
-    return await mockStorage.set('conquest-teams', teams);
-  },
-  async getMatches() {
-    const result = await mockStorage.get('conquest-matches');
-    return result;
-  },
-  async setMatches(matches) {
-    return await mockStorage.set('conquest-matches', matches);
-  },
-  async getBonuses() {
-    const result = await mockStorage.get('conquest-bonuses');
-    return result;
-  },
-  async setBonuses(bonuses) {
-    return await mockStorage.set('conquest-bonuses', bonuses);
-  },
-  async getAuthSession() {
-    const result = await mockStorage.get('conquest-auth');
-    return result;
-  },
-  async setAuthSession(session) {
-    return await mockStorage.set('conquest-auth', session);
-  },
-  async deleteAuthSession() {
-    return await mockStorage.delete('conquest-auth');
-  }
-};
 
 const App = () => {
   const [teams, setTeams] = useState([]);
@@ -323,8 +273,7 @@ const App = () => {
               <p className="text-blue-100">Tournament Tracker • November 2025 - February 2026</p>
               <p className="text-sm text-blue-200 mt-2">Silver Creek Valley Country Club</p>
               {saveStatus && <p className="text-xs text-blue-300 mt-2">{saveStatus}</p>}
-              <p className="text-xs text-blue-200 mt-2">⚠️ Demo Mode - For production, deploy with Firebase</p>
-            </div>
+              </div>
             {isAuthenticated ? (
               <div className="text-right">
                 <div className="text-sm text-blue-200 mb-2">Logged in: {loginName}</div>
