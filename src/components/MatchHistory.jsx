@@ -29,6 +29,35 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
     return `${player.firstName} ${player.lastName}`;
   };
 
+  const formatSetScores = (match) => {
+    const setScores = [];
+
+    // Add Set 1
+    if (match.set1Team1 !== undefined && match.set1Team2 !== undefined) {
+      setScores.push(`${match.set1Team1}-${match.set1Team2}`);
+    }
+
+    // Add Set 2
+    if (match.set2Team1 !== undefined && match.set2Team2 !== undefined) {
+      setScores.push(`${match.set2Team1}-${match.set2Team2}`);
+    }
+
+    // Add Set 3 with tiebreaker notation if applicable
+    if (match.set3Team1 !== undefined && match.set3Team2 !== undefined &&
+        (match.set3Team1 !== '' || match.set3Team2 !== '')) {
+      const set3Score = `${match.set3Team1}-${match.set3Team2}`;
+      const tbNotation = match.set3IsTiebreaker ? ' TB' : '';
+      setScores.push(set3Score + tbNotation);
+    }
+
+    // If no individual set scores available, fall back to old format
+    if (setScores.length === 0) {
+      return `${match.team1Sets}-${match.team2Sets} sets • ${match.team1Games}-${match.team2Games} games`;
+    }
+
+    return `(${setScores.join(', ')})`;
+  };
+
   // Sort matches by date (newest first), then by timestamp if available
   const sortedMatches = [...matches].sort((a, b) => {
     const dateA = new Date(a.date);
@@ -66,16 +95,33 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
                 <div className="flex justify-between items-start">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className={match.winner === 'team1' ? 'font-semibold text-green-600' : 'font-semibold'}>
-                        {team1 ? team1.name : 'Team ' + match.team1Id}
-                      </span>
-                      <span className="text-sm">vs</span>
-                      <span className={match.winner === 'team2' ? 'font-semibold text-green-600' : 'font-semibold'}>
-                        {team2 ? team2.name : 'Team ' + match.team2Id}
+                      {match.winner === 'team1' ? (
+                        <>
+                          <span className="font-bold text-green-600">
+                            {team1 ? team1.name : 'Team ' + match.team1Id}
+                          </span>
+                          <span className="text-sm">def.</span>
+                          <span className="font-semibold">
+                            {team2 ? team2.name : 'Team ' + match.team2Id}
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="font-bold text-green-600">
+                            {team2 ? team2.name : 'Team ' + match.team2Id}
+                          </span>
+                          <span className="text-sm">def.</span>
+                          <span className="font-semibold">
+                            {team1 ? team1.name : 'Team ' + match.team1Id}
+                          </span>
+                        </>
+                      )}
+                      <span className="font-semibold text-blue-600">
+                        {formatSetScores(match)}
                       </span>
                     </div>
                     <div className="text-sm text-gray-600">
-                      {match.team1Sets}-{match.team2Sets} sets • {match.team1Games}-{match.team2Games} games • {formatDate(match.date)}
+                      {formatDate(match.date)}
                       {match.notes && <span className="ml-2 italic">• {match.notes}</span>}
                     </div>
 

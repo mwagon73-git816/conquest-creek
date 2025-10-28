@@ -21,5 +21,6 @@ export const COLLECTIONS = {
   TEAMS: 'teams',
   MATCHES: 'matches',
   BONUSES: 'bonuses',
-  AUTH: 'auth'
+  AUTH: 'auth',
+  PHOTOS: 'photos'
 };

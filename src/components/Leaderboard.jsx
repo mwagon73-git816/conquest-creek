@@ -1,13 +1,23 @@
 import React from 'react';
 import { Trophy } from 'lucide-react';
+import MatchPhotos from './MatchPhotos';
 
-const Leaderboard = ({ teams, getLeaderboard }) => {
+const Leaderboard = ({ teams, getLeaderboard, photos, isAuthenticated, onDeletePhoto }) => {
   return (
-    <div className="bg-white rounded-lg shadow-md p-6">
-      <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
-        <Trophy className="w-6 h-6 text-yellow-500" />
-        Tournament Leaderboard
-      </h2>
+    <>
+      {/* Match Photos Carousel */}
+      <MatchPhotos
+        photos={photos}
+        teams={teams}
+        isAuthenticated={isAuthenticated}
+        onDeletePhoto={onDeletePhoto}
+      />
+
+      <div className="bg-white rounded-lg shadow-md p-6">
+        <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
+          <Trophy className="w-6 h-6 text-yellow-500" />
+          Tournament Leaderboard
+        </h2>
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead>
@@ -54,7 +64,8 @@ const Leaderboard = ({ teams, getLeaderboard }) => {
       {teams.length === 0 && (
         <p className="text-center text-gray-500 py-8">No teams created yet. Directors can add teams in the Teams tab.</p>
       )}
-    </div>
+      </div>
+    </>
   );
 };
 

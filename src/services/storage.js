@@ -84,6 +84,15 @@ export const tournamentStorage = {
     return await storage.delete(COLLECTIONS.AUTH, 'session');
   },
 
+  async getPhotos() {
+    const result = await storage.get(COLLECTIONS.PHOTOS);
+    return result ? result.data : null;
+  },
+
+  async setPhotos(photos) {
+    return await storage.set(COLLECTIONS.PHOTOS, photos);
+  },
+
   async resetAll() {
     await storage.delete(COLLECTIONS.TEAMS);
     await storage.delete(COLLECTIONS.MATCHES);

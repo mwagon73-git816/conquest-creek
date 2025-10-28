@@ -17,6 +17,7 @@ const App = () => {
   const [bonusEntries, setBonusEntries] = useState([]);
   const [players, setPlayers] = useState([]);
   const [trades, setTrades] = useState([]);
+  const [photos, setPhotos] = useState([]);
   const [activeTab, setActiveTab] = useState('leaderboard');
   const [loading, setLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -62,7 +63,10 @@ const App = () => {
         
         const bonusData = await tournamentStorage.getBonuses();
         if (bonusData) setBonusEntries(JSON.parse(bonusData));
-        
+
+        const photosData = await tournamentStorage.getPhotos();
+        if (photosData) setPhotos(JSON.parse(photosData));
+
         const authData = await tournamentStorage.getAuthSession();
         if (authData) {
           const session = JSON.parse(authData);
@@ -110,6 +114,10 @@ const App = () => {
   useEffect(() => {
     if (!loading) tournamentStorage.setBonuses(JSON.stringify(bonusEntries));
   }, [bonusEntries, loading]);
+
+  useEffect(() => {
+    if (!loading) tournamentStorage.setPhotos(JSON.stringify(photos));
+  }, [photos, loading]);
 
   // Session validity checker - runs every 60 seconds
   useEffect(() => {
@@ -169,6 +177,22 @@ const App = () => {
     setLoginName('');
     tournamentStorage.deleteAuthSession();
     setActiveTab('leaderboard');
+  };
+
+  const handleDeletePhoto = (photoId) => {
+    setPhotos(photos.filter(p => p.id !== photoId));
+  };
+
+  const handleAddPhoto = (photoData) => {
+    // Enforce max 20 photos limit
+    let updatedPhotos = [...photos];
+    if (updatedPhotos.length >= 20) {
+      // Remove oldest photo
+      updatedPhotos.sort((a, b) => new Date(a.uploadTimestamp) - new Date(b.uploadTimestamp));
+      updatedPhotos = updatedPhotos.slice(1);
+    }
+    updatedPhotos.push(photoData);
+    setPhotos(updatedPhotos);
   };
 
   const getEffectiveRating = (player) => {
@@ -450,7 +474,13 @@ const App = () => {
 
         <div className="space-y-6">
           {activeTab === 'leaderboard' && (
-            <Leaderboard teams={teams} getLeaderboard={getLeaderboard} />
+            <Leaderboard
+              teams={teams}
+              getLeaderboard={getLeaderboard}
+              photos={photos}
+              isAuthenticated={isAuthenticated}
+              onDeletePhoto={handleDeletePhoto}
+            />
           )}
 
           {activeTab === 'teams' && (
@@ -484,6 +514,8 @@ const App = () => {
               isAuthenticated={isAuthenticated}
               setActiveTab={setActiveTab}
               players={players}
+              onAddPhoto={handleAddPhoto}
+              loginName={loginName}
             />
           )}
 
