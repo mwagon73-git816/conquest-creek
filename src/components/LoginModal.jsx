@@ -10,7 +10,7 @@ const LoginModal = ({ showLogin, loginName, setLoginName, handleLogin, setShowLo
         <p className="text-sm text-gray-600 mb-4">Only tournament directors can edit.</p>
         <input
           type="text"
-          placeholder="Enter your name"
+          placeholder="Enter your username"
           value={loginName}
           onChange={(e) => setLoginName(e.target.value)}
           onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
@@ -18,22 +18,19 @@ const LoginModal = ({ showLogin, loginName, setLoginName, handleLogin, setShowLo
           autoFocus
         />
         <div className="flex gap-2">
-          <button 
-            onClick={handleLogin} 
+          <button
+            onClick={handleLogin}
             className="flex-1 bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
           >
             Login
           </button>
-          <button 
-            onClick={() => setShowLogin(false)} 
+          <button
+            onClick={() => setShowLogin(false)}
             className="flex-1 bg-gray-300 text-gray-700 py-2 rounded hover:bg-gray-400"
           >
             Cancel
           </button>
         </div>
-        <p className="text-xs text-gray-500 mt-3">
-          Authorized: {tournamentDirectors.map(d => d.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')).join(', ')}
-        </p>
       </div>
     </div>
   );

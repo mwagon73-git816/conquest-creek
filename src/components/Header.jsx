@@ -1,10 +1,19 @@
 import React from 'react';
 import { APP_VERSION } from '../version';
+import tennisCourtImage from '../assets/tennis-court.jpg';
 
 const Header = ({ isAuthenticated, loginName, saveStatus, handleLogout, setShowLogin }) => {
   return (
-    <div className="bg-gradient-to-r from-blue-600 to-blue-800 text-white rounded-lg shadow-lg p-6 mb-6">
-      <div className="flex justify-between items-start">
+    <div
+      className="text-white rounded-lg shadow-lg p-6 mb-6 relative overflow-hidden"
+      style={{
+        backgroundImage: `linear-gradient(to right, rgba(37, 99, 235, 0.85), rgba(30, 64, 175, 0.85)), url(${tennisCourtImage})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundBlendMode: 'overlay'
+      }}
+    >
+      <div className="flex justify-between items-start relative z-10">
         <div>
           <div className="flex items-center gap-3 mb-2">
             <h1 className="text-3xl font-bold">Conquest of the Creek</h1>

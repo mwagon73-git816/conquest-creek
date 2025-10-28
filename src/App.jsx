@@ -24,7 +24,10 @@ const App = () => {
   const [loginName, setLoginName] = useState('');
   const [saveStatus, setSaveStatus] = useState('');
 
-  const TOURNAMENT_DIRECTORS = ['matt wagoner', 'john nguyen'];
+  const TOURNAMENT_DIRECTORS = [
+    { username: 'MW#', name: 'Matt Wagoner' },
+    { username: 'JN$', name: 'John Nguyen' }
+  ];
 
   useEffect(() => {
     const loadData = async () => {
@@ -63,10 +66,15 @@ const App = () => {
         const authData = await tournamentStorage.getAuthSession();
         if (authData) {
           const session = JSON.parse(authData);
-          const sessionAge = Date.now() - new Date(session.timestamp).getTime();
-          if (sessionAge < 24 * 60 * 60 * 1000) {
+          const now = Date.now();
+          const expiresAt = new Date(session.expiresAt).getTime();
+
+          if (now < expiresAt) {
             setIsAuthenticated(true);
             setLoginName(session.name);
+          } else {
+            // Session expired
+            tournamentStorage.deleteAuthSession();
           }
         }
         
@@ -103,15 +111,56 @@ const App = () => {
     if (!loading) tournamentStorage.setBonuses(JSON.stringify(bonusEntries));
   }, [bonusEntries, loading]);
 
+  // Session validity checker - runs every 60 seconds
+  useEffect(() => {
+    const checkSessionValidity = async () => {
+      if (isAuthenticated) {
+        const authData = await tournamentStorage.getAuthSession();
+        if (authData) {
+          const session = JSON.parse(authData);
+          const now = Date.now();
+          const expiresAt = new Date(session.expiresAt).getTime();
+
+          if (now >= expiresAt) {
+            // Session expired
+            setIsAuthenticated(false);
+            setLoginName('');
+            tournamentStorage.deleteAuthSession();
+            setActiveTab('leaderboard');
+            alert('Your session has expired due to inactivity. Please log in again.');
+          }
+        } else {
+          // Session data missing
+          setIsAuthenticated(false);
+          setLoginName('');
+          setActiveTab('leaderboard');
+        }
+      }
+    };
+
+    const intervalId = setInterval(checkSessionValidity, 60 * 1000); // Check every 60 seconds
+
+    return () => clearInterval(intervalId); // Clean up on unmount
+  }, [isAuthenticated]);
+
   const handleLogin = () => {
-    const normalizedName = loginName.trim().toLowerCase();
-    if (TOURNAMENT_DIRECTORS.includes(normalizedName)) {
+    const normalizedUsername = loginName.trim();
+    const director = TOURNAMENT_DIRECTORS.find(d => d.username === normalizedUsername);
+
+    if (director) {
       setIsAuthenticated(true);
-      tournamentStorage.setAuthSession(JSON.stringify({ name: loginName.trim(), timestamp: new Date().toISOString() }));
+      const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // 30 minutes
+      tournamentStorage.setAuthSession(JSON.stringify({
+        username: director.username,
+        name: director.name,
+        timestamp: new Date().toISOString(),
+        expiresAt: expiresAt
+      }));
+      setLoginName(director.name);
       setShowLogin(false);
-      alert('Welcome, ' + loginName.trim() + '!');
+      alert('Welcome, ' + director.name + '!');
     } else {
-      alert('Only tournament directors can make changes.');
+      alert('Invalid username. Only tournament directors can make changes.');
     }
   };
 
@@ -190,17 +239,17 @@ const App = () => {
 
   const calculateBonusPoints = (teamId) => {
     const team = teams.find(t => t.id === teamId);
-    
+
     const teamMatches = matches.filter(m => m.team1Id === teamId || m.team2Id === teamId);
     const matchesByMonth = {};
-    
+
     // Only count matches in tournament months: Nov 2025, Dec 2025, Jan 2026
     const tournamentMonths = ['2025-10', '2025-11', '2026-0']; // Nov=10, Dec=11, Jan=0
-    
+
     teamMatches.forEach(match => {
       const date = new Date(match.date);
       const monthKey = date.getFullYear() + '-' + date.getMonth();
-      
+
       // Only count if it's a tournament month
       if (tournamentMonths.includes(monthKey)) {
         if (!matchesByMonth[monthKey]) matchesByMonth[monthKey] = [];
@@ -209,7 +258,7 @@ const App = () => {
     });
 
     let totalBonus = 0;
-    
+
     // Match volume bonuses - only apply to tournament months
     tournamentMonths.forEach(monthKey => {
       const count = matchesByMonth[monthKey] ? matchesByMonth[monthKey].length : 0;
@@ -218,6 +267,75 @@ const App = () => {
       if (count >= 15) totalBonus += 3;
       if (count >= 20) totalBonus += 4;
       if (count < 4) totalBonus -= 4;
+    });
+
+    // Full Roster Participation Bonus: +1 per month if all 8 team members play
+    tournamentMonths.forEach(monthKey => {
+      const monthMatches = matchesByMonth[monthKey] || [];
+      if (monthMatches.length > 0) {
+        const uniquePlayers = new Set();
+        monthMatches.forEach(match => {
+          const teamPlayers = match.team1Id === teamId ? match.team1Players : match.team2Players;
+          (teamPlayers || []).forEach(playerId => uniquePlayers.add(playerId));
+        });
+
+        const teamPlayers = players.filter(p => p.teamId === teamId && p.status === 'active');
+        if (teamPlayers.length === 8 && uniquePlayers.size === 8) {
+          totalBonus += 1;
+        }
+      }
+    });
+
+    // Variety Bonus Type 1: +1 per month for playing 3+ different teams
+    tournamentMonths.forEach(monthKey => {
+      const monthMatches = matchesByMonth[monthKey] || [];
+      const opponentTeams = new Set();
+      monthMatches.forEach(match => {
+        const opponentId = match.team1Id === teamId ? match.team2Id : match.team1Id;
+        opponentTeams.add(opponentId);
+      });
+      if (opponentTeams.size >= 3) {
+        totalBonus += 1;
+      }
+    });
+
+    // Variety Bonus Type 2: +1 per month for playing at 3+ different NTRP levels
+    tournamentMonths.forEach(monthKey => {
+      const monthMatches = matchesByMonth[monthKey] || [];
+      const levels = new Set();
+      monthMatches.forEach(match => {
+        if (match.level) levels.add(match.level);
+      });
+      if (levels.size >= 3) {
+        totalBonus += 1;
+      }
+    });
+
+    // Mixed Doubles Bonus: +1 per month for at least 2 mixed doubles matches
+    tournamentMonths.forEach(monthKey => {
+      const monthMatches = matchesByMonth[monthKey] || [];
+      let mixedDoublesCount = 0;
+
+      monthMatches.forEach(match => {
+        const teamPlayers = match.team1Id === teamId ? match.team1Players : match.team2Players;
+        if (teamPlayers && teamPlayers.length > 0) {
+          const playerGenders = teamPlayers.map(playerId => {
+            const player = players.find(p => p.id === playerId);
+            return player ? player.gender : null;
+          }).filter(g => g !== null);
+
+          const hasMale = playerGenders.includes('M');
+          const hasFemale = playerGenders.includes('F');
+
+          if (hasMale && hasFemale) {
+            mixedDoublesCount++;
+          }
+        }
+      });
+
+      if (mixedDoublesCount >= 2) {
+        totalBonus += 1;
+      }
     });
 
     // Manual bonus entries (if still used)
@@ -230,7 +348,7 @@ const App = () => {
       // Uniform bonus (season-long)
       const uniformBonus = getUniformBonus(team.bonuses.uniformType, team.bonuses.uniformPhotoSubmitted);
       totalBonus += uniformBonus;
-      
+
       // Practice bonus (monthly)
       const practiceBonus = getPracticeBonus(team.bonuses.practices);
       totalBonus += practiceBonus;
