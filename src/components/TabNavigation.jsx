@@ -1,14 +1,21 @@
 import React from 'react';
-import { Trophy, Users, Calendar, TrendingUp, UserPlus } from 'lucide-react';
+import { Trophy, Users, Calendar, TrendingUp, UserPlus, Shield } from 'lucide-react';
 
-const TabNavigation = ({ activeTab, setActiveTab }) => {
-  const tabs = [
-    { id: 'leaderboard', icon: Trophy, label: 'Leaderboard' },
-    { id: 'teams', icon: Users, label: 'Teams' },
-    { id: 'players', icon: UserPlus, label: 'Players' },
-    { id: 'entry', icon: Calendar, label: 'Match Entry' },
-    { id: 'matches', icon: TrendingUp, label: 'Matches' }
+const TabNavigation = ({ activeTab, setActiveTab, userRole, isAuthenticated }) => {
+  const allTabs = [
+    { id: 'leaderboard', icon: Trophy, label: 'Leaderboard', roles: ['director', 'captain', ''] },
+    { id: 'teams', icon: Users, label: 'Teams', roles: ['director', ''] },
+    { id: 'players', icon: UserPlus, label: 'Players', roles: ['director', ''] },
+    { id: 'captains', icon: Shield, label: 'Captains', roles: ['director'] },
+    { id: 'entry', icon: Calendar, label: 'Match Entry', roles: ['director', 'captain', ''] },
+    { id: 'matches', icon: TrendingUp, label: 'Matches', roles: ['director', 'captain', ''] }
   ];
+
+  // Filter tabs based on user role
+  const tabs = allTabs.filter(tab => {
+    const currentRole = isAuthenticated ? userRole : '';
+    return tab.roles.includes(currentRole);
+  });
 
   return (
     <div className="bg-white rounded-lg shadow-md mb-6 overflow-x-auto">

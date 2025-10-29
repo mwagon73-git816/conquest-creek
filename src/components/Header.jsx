@@ -2,7 +2,13 @@ import React from 'react';
 import { APP_VERSION } from '../version';
 import tennisCourtImage from '../assets/tennis-court.jpg';
 
-const Header = ({ isAuthenticated, loginName, saveStatus, handleLogout, setShowLogin }) => {
+const Header = ({ isAuthenticated, loginName, userRole, saveStatus, handleLogout, setShowLogin }) => {
+  const getRoleDisplay = () => {
+    if (userRole === 'director') return 'Director';
+    if (userRole === 'captain') return 'Captain';
+    return '';
+  };
+
   return (
     <div
       className="text-white rounded-lg shadow-lg p-6 mb-6 relative overflow-hidden"
@@ -22,7 +28,10 @@ const Header = ({ isAuthenticated, loginName, saveStatus, handleLogout, setShowL
         </div>
         {isAuthenticated ? (
           <div className="text-right flex flex-col items-end gap-2">
-            <div className="text-sm text-blue-200">Logged in: {loginName}</div>
+            <div className="text-sm text-blue-200">
+              {userRole === 'director' && `Director: ${loginName}`}
+              {userRole === 'captain' && `Captain: ${loginName}`}
+            </div>
             <button
               onClick={handleLogout}
               className="bg-white text-blue-600 px-3 py-1 rounded text-sm hover:bg-blue-50"
@@ -37,7 +46,7 @@ const Header = ({ isAuthenticated, loginName, saveStatus, handleLogout, setShowL
               onClick={() => setShowLogin(true)}
               className="bg-white text-blue-600 px-4 py-2 rounded hover:bg-blue-50"
             >
-              Director Login
+              Login
             </button>
             <span className="text-xs bg-blue-700 bg-opacity-70 px-2 py-1 rounded">v{APP_VERSION}</span>
           </div>

@@ -1,7 +1,10 @@
-import React from 'react';
-import { TrendingUp, Edit, Trash2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { TrendingUp, Edit, Trash2, ChevronDown, ChevronUp, Filter } from 'lucide-react';
 
-const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTab, players }) => {
+const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTab, players, userRole, userTeamId }) => {
+  const [showFilters, setShowFilters] = useState(false);
+  const [selectedTeams, setSelectedTeams] = useState([]);
+  const [selectedPlayers, setSelectedPlayers] = useState([]);
   const handleEditMatch = (match) => {
     // Note: In the full app, this would pass the match data back to MatchEntry
     // For now, we'll navigate to the entry tab
@@ -58,6 +61,29 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
     return `(${setScores.join(', ')})`;
   };
 
+  const handleTeamToggle = (teamId) => {
+    if (selectedTeams.includes(teamId)) {
+      setSelectedTeams(selectedTeams.filter(id => id !== teamId));
+    } else {
+      setSelectedTeams([...selectedTeams, teamId]);
+    }
+  };
+
+  const handlePlayerToggle = (playerId) => {
+    if (selectedPlayers.includes(playerId)) {
+      setSelectedPlayers(selectedPlayers.filter(id => id !== playerId));
+    } else {
+      setSelectedPlayers([...selectedPlayers, playerId]);
+    }
+  };
+
+  const handleClearFilters = () => {
+    setSelectedTeams([]);
+    setSelectedPlayers([]);
+  };
+
+  const hasActiveFilters = selectedTeams.length > 0 || selectedPlayers.length > 0;
+
   // Sort matches by date (newest first), then by timestamp if available
   const sortedMatches = [...matches].sort((a, b) => {
     const dateA = new Date(a.date);
@@ -76,17 +102,197 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
     return 0;
   });
 
+  // Apply filters
+  const filteredMatches = sortedMatches.filter(match => {
+    // Captain restriction: only show matches involving their team
+    if (userRole === 'captain' && userTeamId) {
+      const captainTeamInvolved = match.team1Id === userTeamId || match.team2Id === userTeamId;
+      if (!captainTeamInvolved) return false;
+    }
+
+    // Team filter
+    if (selectedTeams.length > 0) {
+      const matchHasSelectedTeam = selectedTeams.includes(match.team1Id) ||
+                                   selectedTeams.includes(match.team2Id);
+      if (!matchHasSelectedTeam) return false;
+    }
+
+    // Player filter
+    if (selectedPlayers.length > 0) {
+      const matchPlayers = [
+        ...(match.team1Players || []),
+        ...(match.team2Players || [])
+      ];
+      const matchHasSelectedPlayer = selectedPlayers.some(playerId =>
+        matchPlayers.includes(playerId)
+      );
+      if (!matchHasSelectedPlayer) return false;
+    }
+
+    return true;
+  });
+
+  const totalMatches = matches.length;
+  const displayedMatches = filteredMatches.length;
+
+  // Check if user can edit/delete a match
+  const canEditMatch = (match) => {
+    if (userRole === 'director') return true;
+    if (userRole === 'captain' && userTeamId) {
+      // Captains can only edit matches involving their team
+      return match.team1Id === userTeamId || match.team2Id === userTeamId;
+    }
+    return false;
+  };
+
   return (
     <div className="bg-white rounded-lg shadow-md p-6">
       <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
         <TrendingUp className="w-6 h-6" />
         Recent Matches
       </h2>
+
+      {/* Filters Section */}
+      <div className="mb-4">
+        <button
+          onClick={() => setShowFilters(!showFilters)}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-100 hover:bg-blue-200 text-blue-800 rounded-lg transition-colors"
+        >
+          <Filter className="w-4 h-4" />
+          <span className="font-semibold">
+            {showFilters ? 'Hide Filters' : 'Show Filters'}
+          </span>
+          {hasActiveFilters && (
+            <span className="bg-blue-600 text-white text-xs px-2 py-1 rounded-full">
+              {selectedTeams.length + selectedPlayers.length}
+            </span>
+          )}
+          {showFilters ? (
+            <ChevronUp className="w-4 h-4" />
+          ) : (
+            <ChevronDown className="w-4 h-4" />
+          )}
+        </button>
+
+        {showFilters && (
+          <div className="mt-3 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Team Filter */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-semibold text-gray-700">
+                    Filter by Team
+                  </label>
+                  {selectedTeams.length > 0 && (
+                    <span className="text-xs text-blue-600 font-medium">
+                      {selectedTeams.length} selected
+                    </span>
+                  )}
+                </div>
+                <div className="bg-white border border-blue-200 rounded p-3 max-h-48 overflow-y-auto">
+                  {teams.length === 0 ? (
+                    <p className="text-sm text-gray-500">No teams available</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {teams.map(team => (
+                        <label
+                          key={team.id}
+                          className="flex items-center gap-2 cursor-pointer hover:bg-blue-50 p-1 rounded"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedTeams.includes(team.id)}
+                            onChange={() => handleTeamToggle(team.id)}
+                            className="w-4 h-4 text-blue-600"
+                          />
+                          <span className="text-sm">{team.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Player Filter */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-semibold text-gray-700">
+                    Filter by Player
+                  </label>
+                  {selectedPlayers.length > 0 && (
+                    <span className="text-xs text-blue-600 font-medium">
+                      {selectedPlayers.length} selected
+                    </span>
+                  )}
+                </div>
+                <div className="bg-white border border-blue-200 rounded p-3 max-h-48 overflow-y-auto">
+                  {!players || players.length === 0 ? (
+                    <p className="text-sm text-gray-500">No players available</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {players
+                        .filter(p => p.status === 'active')
+                        .sort((a, b) => {
+                          const nameA = `${a.lastName} ${a.firstName}`.toLowerCase();
+                          const nameB = `${b.lastName} ${b.firstName}`.toLowerCase();
+                          return nameA.localeCompare(nameB);
+                        })
+                        .map(player => (
+                          <label
+                            key={player.id}
+                            className="flex items-center gap-2 cursor-pointer hover:bg-blue-50 p-1 rounded"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedPlayers.includes(player.id)}
+                              onChange={() => handlePlayerToggle(player.id)}
+                              className="w-4 h-4 text-blue-600"
+                            />
+                            <span className="text-sm">
+                              {player.lastName}, {player.firstName}
+                              <span className="text-xs text-gray-500 ml-1">
+                                ({player.gender} {player.dynamicRating || player.ntrpRating})
+                              </span>
+                            </span>
+                          </label>
+                        ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Clear Filters Button */}
+            {hasActiveFilters && (
+              <div className="mt-4 flex justify-end">
+                <button
+                  onClick={handleClearFilters}
+                  className="px-4 py-2 bg-red-100 hover:bg-red-200 text-red-800 rounded-lg text-sm font-semibold transition-colors"
+                >
+                  Clear All Filters
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Match Count Display */}
+      {hasActiveFilters && (
+        <div className="mb-3 px-3 py-2 bg-blue-100 text-blue-800 rounded text-sm font-semibold">
+          Showing {displayedMatches} of {totalMatches} matches
+        </div>
+      )}
+
       <div className="space-y-3">
         {matches.length === 0 ? (
           <p className="text-gray-500 text-center py-8">No matches recorded yet</p>
+        ) : filteredMatches.length === 0 ? (
+          <p className="text-gray-500 text-center py-8">
+            No matches found matching the selected filters
+          </p>
         ) : (
-          sortedMatches.slice(0, 20).map(match => {
+          filteredMatches.slice(0, 20).map(match => {
             const team1 = teams.find(t => t.id == match.team1Id);
             const team2 = teams.find(t => t.id == match.team2Id);
             
@@ -154,7 +360,7 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
                       </div>
                     )}
                   </div>
-                  {isAuthenticated && (
+                  {isAuthenticated && canEditMatch(match) && (
                     <div className="flex gap-2">
                       <button
                         onClick={() => handleEditMatch(match)}

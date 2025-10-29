@@ -93,6 +93,15 @@ export const tournamentStorage = {
     return await storage.set(COLLECTIONS.PHOTOS, photos);
   },
 
+  async getCaptains() {
+    const result = await storage.get(COLLECTIONS.CAPTAINS);
+    return result ? result.data : null;
+  },
+
+  async setCaptains(captains) {
+    return await storage.set(COLLECTIONS.CAPTAINS, captains);
+  },
+
   async resetAll() {
     await storage.delete(COLLECTIONS.TEAMS);
     await storage.delete(COLLECTIONS.MATCHES);

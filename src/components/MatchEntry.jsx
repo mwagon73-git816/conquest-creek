@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Calendar, Plus, Check, X, Upload, Image as ImageIcon } from 'lucide-react';
 
-const MatchEntry = ({ teams, matches, setMatches, isAuthenticated, setActiveTab, players, onAddPhoto, loginName }) => {
+const MatchEntry = ({ teams, matches, setMatches, isAuthenticated, setActiveTab, players, captains, onAddPhoto, loginName, userRole, userTeamId }) => {
   const [showMatchForm, setShowMatchForm] = useState(false);
   const [editingMatch, setEditingMatch] = useState(null);
   const [matchFormData, setMatchFormData] = useState({
@@ -116,7 +116,75 @@ const MatchEntry = ({ teams, matches, setMatches, isAuthenticated, setActiveTab,
     };
   };
 
-  const handleSaveMatch = () => {
+  const sendMatchNotification = async (matchData) => {
+    // Only send email if captain is entering a match (not editing)
+    if (userRole !== 'captain' || editingMatch || !captains) {
+      return;
+    }
+
+    try {
+      // Find opponent team ID (the team that's not the captain's team)
+      const opponentTeamId = matchData.team1Id === userTeamId ? matchData.team2Id : matchData.team1Id;
+
+      // Find opponent captain
+      const opponentCaptain = captains.find(c =>
+        c.teamId === opponentTeamId &&
+        c.status === 'active' &&
+        c.email
+      );
+
+      if (!opponentCaptain) {
+        console.log('No active captain with email found for opponent team');
+        return;
+      }
+
+      // Get team names
+      const senderTeam = teams.find(t => t.id === userTeamId)?.name || 'Unknown Team';
+      const recipientTeam = teams.find(t => t.id === opponentTeamId)?.name || 'Unknown Team';
+
+      // Format match scores
+      const setScores = [];
+      if (matchData.set1Team1 && matchData.set1Team2) {
+        setScores.push(`${matchData.set1Team1}-${matchData.set1Team2}`);
+      }
+      if (matchData.set2Team1 && matchData.set2Team2) {
+        setScores.push(`${matchData.set2Team1}-${matchData.set2Team2}`);
+      }
+      if (matchData.set3Team1 && matchData.set3Team2) {
+        const tbLabel = matchData.set3IsTiebreaker ? ' (TB)' : '';
+        setScores.push(`${matchData.set3Team1}-${matchData.set3Team2}${tbLabel}`);
+      }
+      const matchScores = setScores.join(', ');
+
+      // Call Netlify function
+      const response = await fetch('/.netlify/functions/send-match-notification', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          recipientEmail: opponentCaptain.email,
+          recipientName: opponentCaptain.name,
+          senderTeam: senderTeam,
+          recipientTeam: recipientTeam,
+          matchScores: matchScores,
+          matchDate: matchData.date,
+          matchLevel: matchData.level
+        })
+      });
+
+      if (response.ok) {
+        console.log('Email notification sent successfully');
+      } else {
+        console.error('Failed to send email notification:', await response.text());
+      }
+    } catch (error) {
+      console.error('Error sending match notification:', error);
+      // Don't throw error - match was already saved
+    }
+  };
+
+  const handleSaveMatch = async () => {
     if (!matchFormData.team1Id || !matchFormData.team2Id) {
       alert('Please select both teams');
       return;
@@ -200,6 +268,14 @@ const MatchEntry = ({ teams, matches, setMatches, isAuthenticated, setActiveTab,
       onAddPhoto(photoData);
     }
 
+    // Send email notification if captain
+    await sendMatchNotification(matchData);
+
+    // Show success message
+    if (userRole === 'captain' && !editingMatch) {
+      alert('Match saved and opponent notified via email');
+    }
+
     setShowMatchForm(false);
     setEditingMatch(null);
     setPhotoFile(null);
@@ -212,7 +288,7 @@ const MatchEntry = ({ teams, matches, setMatches, isAuthenticated, setActiveTab,
     setMatchFormData({
       date: new Date().toISOString().split('T')[0],
       level: '7.0',
-      team1Id: '',
+      team1Id: userRole === 'captain' ? userTeamId.toString() : '', // Auto-select captain's team
       team2Id: '',
       set1Team1: '',
       set1Team2: '',
@@ -331,6 +407,8 @@ const MatchEntry = ({ teams, matches, setMatches, isAuthenticated, setActiveTab,
                 onChange={(e) => setMatchFormData({...matchFormData, level: e.target.value})}
                 className="w-full px-3 py-2 border rounded"
               >
+                <option value="5.0">5.0</option>
+                <option value="5.5">5.5</option>
                 <option value="6.0">6.0</option>
                 <option value="6.5">6.5</option>
                 <option value="7.0">7.0</option>
@@ -341,21 +419,29 @@ const MatchEntry = ({ teams, matches, setMatches, isAuthenticated, setActiveTab,
               </select>
             </div>
             <div>
-              <label className="block text-sm font-semibold mb-1">Team 1 *</label>
+              <label className="block text-sm font-semibold mb-1">
+                Team 1 * {userRole === 'captain' && '(Your Team)'}
+              </label>
               <select
                 value={matchFormData.team1Id}
                 onChange={(e) => setMatchFormData({
-                  ...matchFormData, 
+                  ...matchFormData,
                   team1Id: e.target.value,
                   team1Players: [] // Reset players when team changes
                 })}
                 className="w-full px-3 py-2 border rounded"
+                disabled={userRole === 'captain'} // Captains cannot change their team
               >
                 <option value="">Select Team 1...</option>
                 {teams.map(t => (
                   <option key={t.id} value={t.id}>{t.name}</option>
                 ))}
               </select>
+              {userRole === 'captain' && (
+                <p className="text-xs text-gray-600 mt-1">
+                  As captain, you can only enter matches for your team
+                </p>
+              )}
             </div>
             <div>
               <label className="block text-sm font-semibold mb-1">Team 2 *</label>

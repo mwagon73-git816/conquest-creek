@@ -7,6 +7,7 @@ import LoginModal from './components/LoginModal';
 import Leaderboard from './components/Leaderboard';
 import TeamsManagement from './components/TeamsManagement';
 import PlayerManagement from './components/PlayerManagement';
+import CaptainManagement from './components/CaptainManagement';
 import MatchEntry from './components/MatchEntry';
 import MatchHistory from './components/MatchHistory';
 import TournamentRules from './components/TournamentRules';
@@ -18,16 +19,21 @@ const App = () => {
   const [players, setPlayers] = useState([]);
   const [trades, setTrades] = useState([]);
   const [photos, setPhotos] = useState([]);
+  const [captains, setCaptains] = useState([]);
   const [activeTab, setActiveTab] = useState('leaderboard');
   const [loading, setLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
   const [loginName, setLoginName] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [loginRole, setLoginRole] = useState('director'); // 'director' or 'captain'
+  const [userRole, setUserRole] = useState(''); // Current user's role
+  const [userTeamId, setUserTeamId] = useState(null); // For captain role
   const [saveStatus, setSaveStatus] = useState('');
 
   const TOURNAMENT_DIRECTORS = [
-    { username: 'MW#', name: 'Matt Wagoner' },
-    { username: 'JN$', name: 'John Nguyen' }
+    { username: 'MW#', name: 'Matt Wagoner', role: 'director' },
+    { username: 'JN$', name: 'John Nguyen', role: 'director' }
   ];
 
   useEffect(() => {
@@ -67,6 +73,9 @@ const App = () => {
         const photosData = await tournamentStorage.getPhotos();
         if (photosData) setPhotos(JSON.parse(photosData));
 
+        const captainsData = await tournamentStorage.getCaptains();
+        if (captainsData) setCaptains(JSON.parse(captainsData));
+
         const authData = await tournamentStorage.getAuthSession();
         if (authData) {
           const session = JSON.parse(authData);
@@ -76,6 +85,8 @@ const App = () => {
           if (now < expiresAt) {
             setIsAuthenticated(true);
             setLoginName(session.name);
+            setUserRole(session.role || 'director');
+            setUserTeamId(session.teamId || null);
           } else {
             // Session expired
             tournamentStorage.deleteAuthSession();
@@ -119,6 +130,10 @@ const App = () => {
     if (!loading) tournamentStorage.setPhotos(JSON.stringify(photos));
   }, [photos, loading]);
 
+  useEffect(() => {
+    if (!loading) tournamentStorage.setCaptains(JSON.stringify(captains));
+  }, [captains, loading]);
+
   // Session validity checker - runs every 60 seconds
   useEffect(() => {
     const checkSessionValidity = async () => {
@@ -133,6 +148,8 @@ const App = () => {
             // Session expired
             setIsAuthenticated(false);
             setLoginName('');
+            setUserRole('');
+            setUserTeamId(null);
             tournamentStorage.deleteAuthSession();
             setActiveTab('leaderboard');
             alert('Your session has expired due to inactivity. Please log in again.');
@@ -141,6 +158,8 @@ const App = () => {
           // Session data missing
           setIsAuthenticated(false);
           setLoginName('');
+          setUserRole('');
+          setUserTeamId(null);
           setActiveTab('leaderboard');
         }
       }
@@ -153,28 +172,69 @@ const App = () => {
 
   const handleLogin = () => {
     const normalizedUsername = loginName.trim();
-    const director = TOURNAMENT_DIRECTORS.find(d => d.username === normalizedUsername);
 
-    if (director) {
-      setIsAuthenticated(true);
-      const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // 30 minutes
-      tournamentStorage.setAuthSession(JSON.stringify({
-        username: director.username,
-        name: director.name,
-        timestamp: new Date().toISOString(),
-        expiresAt: expiresAt
-      }));
-      setLoginName(director.name);
-      setShowLogin(false);
-      alert('Welcome, ' + director.name + '!');
-    } else {
-      alert('Invalid username. Only tournament directors can make changes.');
+    if (loginRole === 'director') {
+      // Director login - no password required
+      const director = TOURNAMENT_DIRECTORS.find(d => d.username === normalizedUsername);
+
+      if (director) {
+        setIsAuthenticated(true);
+        setUserRole('director');
+        setUserTeamId(null);
+        const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // 30 minutes
+        tournamentStorage.setAuthSession(JSON.stringify({
+          username: director.username,
+          name: director.name,
+          role: 'director',
+          teamId: null,
+          timestamp: new Date().toISOString(),
+          expiresAt: expiresAt
+        }));
+        setLoginName(director.name);
+        setShowLogin(false);
+        setLoginPassword('');
+        alert('Welcome, ' + director.name + '!');
+      } else {
+        alert('Invalid username.');
+      }
+    } else if (loginRole === 'captain') {
+      // Captain login - requires password
+      const captain = captains.find(c =>
+        c.username === normalizedUsername &&
+        c.password === loginPassword &&
+        c.status === 'active'
+      );
+
+      if (captain) {
+        setIsAuthenticated(true);
+        setUserRole('captain');
+        setUserTeamId(captain.teamId);
+        const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // 30 minutes
+        tournamentStorage.setAuthSession(JSON.stringify({
+          username: captain.username,
+          name: captain.name,
+          role: 'captain',
+          teamId: captain.teamId,
+          timestamp: new Date().toISOString(),
+          expiresAt: expiresAt
+        }));
+        setLoginName(captain.name);
+        setShowLogin(false);
+        setLoginPassword('');
+        setActiveTab('entry'); // Captains start on match entry
+        alert('Welcome, Captain ' + captain.name + '!');
+      } else {
+        alert('Invalid username or password.');
+      }
     }
   };
 
   const handleLogout = () => {
     setIsAuthenticated(false);
     setLoginName('');
+    setUserRole('');
+    setUserTeamId(null);
+    setLoginPassword('');
     tournamentStorage.deleteAuthSession();
     setActiveTab('leaderboard');
   };
@@ -456,21 +516,31 @@ const App = () => {
         showLogin={showLogin}
         loginName={loginName}
         setLoginName={setLoginName}
+        loginPassword={loginPassword}
+        setLoginPassword={setLoginPassword}
+        loginRole={loginRole}
+        setLoginRole={setLoginRole}
         handleLogin={handleLogin}
         setShowLogin={setShowLogin}
         tournamentDirectors={TOURNAMENT_DIRECTORS}
       />
-      
+
       <div className="max-w-7xl mx-auto">
         <Header
           isAuthenticated={isAuthenticated}
           loginName={loginName}
+          userRole={userRole}
           saveStatus={saveStatus}
           handleLogout={handleLogout}
           setShowLogin={setShowLogin}
         />
 
-        <TabNavigation activeTab={activeTab} setActiveTab={setActiveTab} />
+        <TabNavigation
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          userRole={userRole}
+          isAuthenticated={isAuthenticated}
+        />
 
         <div className="space-y-6">
           {activeTab === 'leaderboard' && (
@@ -506,6 +576,15 @@ const App = () => {
             />
           )}
 
+          {activeTab === 'captains' && (
+            <CaptainManagement
+              captains={captains}
+              setCaptains={setCaptains}
+              teams={teams}
+              isAuthenticated={isAuthenticated}
+            />
+          )}
+
           {activeTab === 'entry' && (
             <MatchEntry
               teams={teams}
@@ -514,8 +593,11 @@ const App = () => {
               isAuthenticated={isAuthenticated}
               setActiveTab={setActiveTab}
               players={players}
+              captains={captains}
               onAddPhoto={handleAddPhoto}
               loginName={loginName}
+              userRole={userRole}
+              userTeamId={userTeamId}
             />
           )}
 
@@ -527,6 +609,8 @@ const App = () => {
               isAuthenticated={isAuthenticated}
               setActiveTab={setActiveTab}
               players={players}
+              userRole={userRole}
+              userTeamId={userTeamId}
             />
           )}
         </div>

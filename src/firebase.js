@@ -22,5 +22,6 @@ export const COLLECTIONS = {
   MATCHES: 'matches',
   BONUSES: 'bonuses',
   AUTH: 'auth',
-  PHOTOS: 'photos'
+  PHOTOS: 'photos',
+  CAPTAINS: 'captains'
 };

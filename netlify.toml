@@ -1,8 +1,21 @@
 [build]
   command = "npm run build"
   publish = "dist"
+  functions = "netlify/functions"
+
+# Environment variables (set these in Netlify dashboard):
+# SENDGRID_API_KEY - Your SendGrid API key for sending emails
+# FROM_EMAIL - Email address to send from (optional, defaults to noreply@conquestofthecreek.com)
 
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
+
+# Headers for security
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
