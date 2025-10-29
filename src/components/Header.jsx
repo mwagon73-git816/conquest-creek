@@ -1,9 +1,52 @@
 import React from 'react';
-import { Instagram } from 'lucide-react';
 import { APP_VERSION } from '../version';
 import tennisCourtImage from '../assets/tennis-court.jpg';
 
 const INSTAGRAM_URL = 'https://instagram.com/conquestofthecreek';
+
+// Instagram Logo with Official Brand Gradient
+const InstagramLogo = ({ className = "w-5 h-5" }) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    className={className}
+  >
+    <defs>
+      <linearGradient id="instagramGradient" x1="0%" y1="100%" x2="100%" y2="0%">
+        <stop offset="0%" style={{ stopColor: '#f09433', stopOpacity: 1 }} />
+        <stop offset="25%" style={{ stopColor: '#e6683c', stopOpacity: 1 }} />
+        <stop offset="50%" style={{ stopColor: '#dc2743', stopOpacity: 1 }} />
+        <stop offset="75%" style={{ stopColor: '#cc2366', stopOpacity: 1 }} />
+        <stop offset="100%" style={{ stopColor: '#bc1888', stopOpacity: 1 }} />
+      </linearGradient>
+    </defs>
+    <rect
+      x="2"
+      y="2"
+      width="20"
+      height="20"
+      rx="5"
+      stroke="url(#instagramGradient)"
+      strokeWidth="2"
+      fill="none"
+    />
+    <circle
+      cx="12"
+      cy="12"
+      r="4"
+      stroke="url(#instagramGradient)"
+      strokeWidth="2"
+      fill="none"
+    />
+    <circle
+      cx="18"
+      cy="6"
+      r="1.5"
+      fill="url(#instagramGradient)"
+    />
+  </svg>
+);
 
 const Header = ({ isAuthenticated, loginName, userRole, saveStatus, handleLogout, setShowLogin }) => {
   const getRoleDisplay = () => {
@@ -32,9 +75,9 @@ const Header = ({ isAuthenticated, loginName, userRole, saveStatus, handleLogout
             href={INSTAGRAM_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-1.5 text-white hover:text-blue-100 transition-all hover:scale-105 mt-2 w-fit"
+            className="flex items-center gap-2 text-white hover:text-blue-50 transition-all hover:scale-105 mt-3 w-fit"
           >
-            <Instagram className="w-4 h-4" />
+            <InstagramLogo className="w-5 h-5" />
             <span className="text-sm">Follow us on Instagram</span>
           </a>
         </div>
