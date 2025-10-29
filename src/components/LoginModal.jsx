@@ -23,9 +23,10 @@ const LoginModal = ({
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-        <h2 className="text-2xl font-bold mb-4">
-          {loginRole === 'director' ? 'Tournament Director Login' : 'Captain Login'}
-        </h2>
+        <h2 className="text-2xl font-bold mb-2">Login</h2>
+        <p className="text-sm text-gray-500 mb-4">
+          Enter your credentials to access the system.
+        </p>
 
         {/* Role Selection Tabs */}
         <div className="flex gap-2 mb-4 border-b">

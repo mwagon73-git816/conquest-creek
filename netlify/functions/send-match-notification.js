@@ -25,13 +25,22 @@ exports.handler = async (event, context) => {
       recipientTeam,
       matchScores,
       matchDate,
-      matchLevel
+      matchLevel,
+      emailType // 'confirmation' or 'verification'
     } = data;
 
-    if (!recipientEmail || !senderTeam || !recipientTeam || !matchScores || !matchDate) {
+    if (!recipientEmail || !senderTeam || !recipientTeam || !matchScores || !matchDate || !emailType) {
       return {
         statusCode: 400,
         body: JSON.stringify({ error: 'Missing required fields' })
+      };
+    }
+
+    // Validate email type
+    if (emailType !== 'confirmation' && emailType !== 'verification') {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ error: 'Invalid emailType. Must be "confirmation" or "verification"' })
       };
     }
 
@@ -60,9 +69,29 @@ exports.handler = async (event, context) => {
       year: 'numeric'
     });
 
-    // Construct email body
-    const subject = `Match Result Verification - ${senderTeam} vs ${recipientTeam}`;
-    const textBody = `Hi ${recipientName || 'Captain'},
+    // Construct email subject and body based on type
+    let subject, textBody;
+
+    if (emailType === 'confirmation') {
+      // Email to the captain who entered the match
+      subject = `Match Result Submitted - ${senderTeam} vs ${recipientTeam}`;
+      textBody = `Hi ${recipientName || 'Captain'},
+
+Thank you for submitting the match result:
+
+${senderTeam} vs ${recipientTeam}
+Score: ${matchScores}
+Level: ${matchLevel || 'Not specified'}
+Date: ${formattedDate}
+
+The opposing team captain has been notified and the result has been recorded.
+
+Thank you,
+Conquest of the Creek Tournament System`;
+    } else {
+      // Email to the opposing captain (verification)
+      subject = `Match Result Verification - ${senderTeam} vs ${recipientTeam}`;
+      textBody = `Hi ${recipientName || 'Captain'},
 
 ${senderTeam}'s captain has entered a match result that involves your team:
 
@@ -78,6 +107,7 @@ If you have any questions about this match result, please contact the tournament
 
 Thank you,
 Conquest of the Creek Tournament System`;
+    }
 
     // SendGrid API v3 request
     const emailData = {

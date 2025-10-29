@@ -116,27 +116,28 @@ const MatchEntry = ({ teams, matches, setMatches, isAuthenticated, setActiveTab,
     };
   };
 
-  const sendMatchNotification = async (matchData) => {
-    // Only send email if captain is entering a match (not editing)
+  const sendMatchNotifications = async (matchData) => {
+    // Only send emails if captain is entering a match (not editing)
     if (userRole !== 'captain' || editingMatch || !captains) {
-      return;
+      return { success: true, message: '' };
     }
 
     try {
       // Find opponent team ID (the team that's not the captain's team)
       const opponentTeamId = matchData.team1Id === userTeamId ? matchData.team2Id : matchData.team1Id;
 
-      // Find opponent captain
+      // Find both captains
+      const enteringCaptain = captains.find(c =>
+        c.teamId === userTeamId &&
+        c.status === 'active' &&
+        c.email
+      );
+
       const opponentCaptain = captains.find(c =>
         c.teamId === opponentTeamId &&
         c.status === 'active' &&
         c.email
       );
-
-      if (!opponentCaptain) {
-        console.log('No active captain with email found for opponent team');
-        return;
-      }
 
       // Get team names
       const senderTeam = teams.find(t => t.id === userTeamId)?.name || 'Unknown Team';
@@ -156,31 +157,89 @@ const MatchEntry = ({ teams, matches, setMatches, isAuthenticated, setActiveTab,
       }
       const matchScores = setScores.join(', ');
 
-      // Call Netlify function
-      const response = await fetch('/.netlify/functions/send-match-notification', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          recipientEmail: opponentCaptain.email,
-          recipientName: opponentCaptain.name,
-          senderTeam: senderTeam,
-          recipientTeam: recipientTeam,
-          matchScores: matchScores,
-          matchDate: matchData.date,
-          matchLevel: matchData.level
-        })
-      });
+      let emailsSent = 0;
+      let emailsFailed = 0;
 
-      if (response.ok) {
-        console.log('Email notification sent successfully');
-      } else {
-        console.error('Failed to send email notification:', await response.text());
+      // Send confirmation email to entering captain
+      if (enteringCaptain) {
+        try {
+          const confirmResponse = await fetch('/.netlify/functions/send-match-notification', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              recipientEmail: enteringCaptain.email,
+              recipientName: enteringCaptain.name,
+              senderTeam: senderTeam,
+              recipientTeam: recipientTeam,
+              matchScores: matchScores,
+              matchDate: matchData.date,
+              matchLevel: matchData.level,
+              emailType: 'confirmation'
+            })
+          });
+
+          if (confirmResponse.ok) {
+            console.log('Confirmation email sent to entering captain');
+            emailsSent++;
+          } else {
+            console.error('Failed to send confirmation email:', await confirmResponse.text());
+            emailsFailed++;
+          }
+        } catch (error) {
+          console.error('Error sending confirmation email:', error);
+          emailsFailed++;
+        }
       }
+
+      // Send verification email to opponent captain
+      if (opponentCaptain) {
+        try {
+          const verifyResponse = await fetch('/.netlify/functions/send-match-notification', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              recipientEmail: opponentCaptain.email,
+              recipientName: opponentCaptain.name,
+              senderTeam: senderTeam,
+              recipientTeam: recipientTeam,
+              matchScores: matchScores,
+              matchDate: matchData.date,
+              matchLevel: matchData.level,
+              emailType: 'verification'
+            })
+          });
+
+          if (verifyResponse.ok) {
+            console.log('Verification email sent to opponent captain');
+            emailsSent++;
+          } else {
+            console.error('Failed to send verification email:', await verifyResponse.text());
+            emailsFailed++;
+          }
+        } catch (error) {
+          console.error('Error sending verification email:', error);
+          emailsFailed++;
+        }
+      }
+
+      // Return results
+      if (emailsSent === 2) {
+        return { success: true, message: 'Match saved. Confirmation emails sent to both captains.' };
+      } else if (emailsSent > 0) {
+        return { success: true, message: 'Match saved but some email notifications failed.' };
+      } else if (emailsFailed > 0) {
+        return { success: false, message: 'Match saved but email notifications failed.' };
+      } else {
+        return { success: true, message: 'Match saved. No captains with emails found.' };
+      }
+
     } catch (error) {
-      console.error('Error sending match notification:', error);
-      // Don't throw error - match was already saved
+      console.error('Error sending match notifications:', error);
+      return { success: false, message: 'Match saved but email notifications failed.' };
     }
   };
 
@@ -268,12 +327,12 @@ const MatchEntry = ({ teams, matches, setMatches, isAuthenticated, setActiveTab,
       onAddPhoto(photoData);
     }
 
-    // Send email notification if captain
-    await sendMatchNotification(matchData);
+    // Send email notifications if captain
+    const emailResult = await sendMatchNotifications(matchData);
 
     // Show success message
-    if (userRole === 'captain' && !editingMatch) {
-      alert('Match saved and opponent notified via email');
+    if (userRole === 'captain' && !editingMatch && emailResult.message) {
+      alert(emailResult.message);
     }
 
     setShowMatchForm(false);
