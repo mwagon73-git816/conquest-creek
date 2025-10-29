@@ -30,6 +30,7 @@ const App = () => {
   const [userRole, setUserRole] = useState(''); // Current user's role
   const [userTeamId, setUserTeamId] = useState(null); // For captain role
   const [saveStatus, setSaveStatus] = useState('');
+  const [editingMatch, setEditingMatch] = useState(null); // Match being edited
 
   const TOURNAMENT_DIRECTORS = [
     { username: 'MW#', name: 'Matt Wagoner', role: 'director' },
@@ -443,19 +444,22 @@ const App = () => {
 
   const calculateTeamPoints = (teamId) => {
     const teamMatches = matches.filter(m => m.team1Id === teamId || m.team2Id === teamId);
-    
+
     let matchWinPoints = 0;
+    let matchWins = 0;
+    let matchLosses = 0;
     let setsWon = 0;
     let gamesWon = 0;
-    
+
     teamMatches.forEach(match => {
       const isTeam1 = match.team1Id === teamId;
       const won = isTeam1 ? match.winner === 'team1' : match.winner === 'team2';
-      
+
       if (won) {
+        matchWins++;
         const matchDate = new Date(match.date);
         const month = matchDate.getMonth();
-        
+
         if (month === 0) {
           matchWinPoints += 4;
         } else if (month === 10 || month === 11) {
@@ -463,8 +467,10 @@ const App = () => {
         } else {
           matchWinPoints += 2;
         }
+      } else {
+        matchLosses++;
       }
-      
+
       if (isTeam1) {
         setsWon += parseInt(match.team1Sets || 0);
         gamesWon += parseInt(match.team1Games || 0);
@@ -476,9 +482,11 @@ const App = () => {
 
     const bonusPoints = calculateBonusPoints(teamId);
     const cappedBonus = Math.min(bonusPoints, matchWinPoints * 0.25);
-    
+
     return {
       matchWinPoints,
+      matchWins,
+      matchLosses,
       bonusPoints,
       cappedBonus,
       totalPoints: matchWinPoints + cappedBonus,
@@ -598,6 +606,8 @@ const App = () => {
               loginName={loginName}
               userRole={userRole}
               userTeamId={userTeamId}
+              editingMatch={editingMatch}
+              setEditingMatch={setEditingMatch}
             />
           )}
 
@@ -611,6 +621,7 @@ const App = () => {
               players={players}
               userRole={userRole}
               userTeamId={userTeamId}
+              setEditingMatch={setEditingMatch}
             />
           )}
         </div>

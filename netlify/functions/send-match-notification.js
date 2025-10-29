@@ -26,7 +26,8 @@ exports.handler = async (event, context) => {
       matchScores,
       matchDate,
       matchLevel,
-      emailType // 'confirmation' or 'verification'
+      emailType, // 'confirmation', 'verification', or 'edit'
+      editorName // Name of person who edited (only for 'edit' type)
     } = data;
 
     if (!recipientEmail || !senderTeam || !recipientTeam || !matchScores || !matchDate || !emailType) {
@@ -37,10 +38,10 @@ exports.handler = async (event, context) => {
     }
 
     // Validate email type
-    if (emailType !== 'confirmation' && emailType !== 'verification') {
+    if (emailType !== 'confirmation' && emailType !== 'verification' && emailType !== 'edit') {
       return {
         statusCode: 400,
-        body: JSON.stringify({ error: 'Invalid emailType. Must be "confirmation" or "verification"' })
+        body: JSON.stringify({ error: 'Invalid emailType. Must be "confirmation", "verification", or "edit"' })
       };
     }
 
@@ -88,7 +89,7 @@ The opposing team captain has been notified and the result has been recorded.
 
 Thank you,
 Conquest of the Creek Tournament System`;
-    } else {
+    } else if (emailType === 'verification') {
       // Email to the opposing captain (verification)
       subject = `Match Result Verification - ${senderTeam} vs ${recipientTeam}`;
       textBody = `Hi ${recipientName || 'Captain'},
@@ -104,6 +105,27 @@ Match Details:
 Please verify this result in the Conquest of the Creek tournament app.
 
 If you have any questions about this match result, please contact the tournament directors.
+
+Thank you,
+Conquest of the Creek Tournament System`;
+    } else if (emailType === 'edit') {
+      // Email to both captains when a match is edited
+      subject = `Match Result Updated - ${senderTeam} vs ${recipientTeam}`;
+      textBody = `Hi ${recipientName || 'Captain'},
+
+A match result has been updated by ${editorName || 'a team captain'}:
+
+Updated Match Details:
+- Teams: ${senderTeam} vs ${recipientTeam}
+- Score: ${matchScores}
+- Level: ${matchLevel || 'Not specified'}
+- Date: ${formattedDate}
+- Updated: ${new Date().toLocaleString('en-US')}
+- Updated by: ${editorName || 'Captain'}
+
+This is a notification that the match result has been modified. Please review the updated information in the Conquest of the Creek tournament app.
+
+If you have any questions about this change, please contact the other team's captain or the tournament directors.
 
 Thank you,
 Conquest of the Creek Tournament System`;

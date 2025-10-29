@@ -1,8 +1,126 @@
-import React from 'react';
-import { Trophy } from 'lucide-react';
+import React, { useState } from 'react';
+import { Trophy, ChevronUp, ChevronDown } from 'lucide-react';
 import MatchPhotos from './MatchPhotos';
 
 const Leaderboard = ({ teams, getLeaderboard, photos, isAuthenticated, onDeletePhoto }) => {
+  const [sortColumn, setSortColumn] = useState('totalPoints');
+  const [sortDirection, setSortDirection] = useState('desc');
+
+  // Get leaderboard data with official ranks assigned
+  const getLeaderboardWithRanks = () => {
+    const leaderboard = getLeaderboard(); // Already sorted by totalPoints
+    return leaderboard.map((team, index) => ({
+      ...team,
+      officialRank: index + 1
+    }));
+  };
+
+  // Sort the display based on current sort column/direction
+  const getSortedLeaderboard = () => {
+    const leaderboardWithRanks = getLeaderboardWithRanks();
+
+    const sorted = [...leaderboardWithRanks].sort((a, b) => {
+      let aValue, bValue;
+
+      switch (sortColumn) {
+        case 'team':
+          aValue = a.name.toLowerCase();
+          bValue = b.name.toLowerCase();
+          break;
+        case 'matches':
+          aValue = a.matchesPlayed;
+          bValue = b.matchesPlayed;
+          break;
+        case 'wins':
+          aValue = a.matchWins;
+          bValue = b.matchWins;
+          break;
+        case 'winPoints':
+          aValue = a.matchWinPoints;
+          bValue = b.matchWinPoints;
+          break;
+        case 'bonus':
+          aValue = a.cappedBonus;
+          bValue = b.cappedBonus;
+          break;
+        case 'totalPoints':
+          aValue = a.totalPoints;
+          bValue = b.totalPoints;
+          break;
+        case 'sets':
+          aValue = a.setsWon;
+          bValue = b.setsWon;
+          break;
+        case 'games':
+          aValue = a.gamesWon;
+          bValue = b.gamesWon;
+          break;
+        default:
+          return 0;
+      }
+
+      if (sortColumn === 'team') {
+        // String comparison
+        if (sortDirection === 'asc') {
+          return aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
+        } else {
+          return aValue > bValue ? -1 : aValue < bValue ? 1 : 0;
+        }
+      } else {
+        // Numeric comparison
+        if (sortDirection === 'asc') {
+          return aValue - bValue;
+        } else {
+          return bValue - aValue;
+        }
+      }
+    });
+
+    return sorted;
+  };
+
+  // Handle column header click
+  const handleSort = (column) => {
+    if (sortColumn === column) {
+      // Toggle direction
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      // New column - set default direction
+      setSortColumn(column);
+      if (column === 'team') {
+        setSortDirection('asc'); // A-Z for team names
+      } else {
+        setSortDirection('desc'); // High to low for numbers
+      }
+    }
+  };
+
+  // Render sortable header
+  const SortableHeader = ({ column, label, align = 'center' }) => {
+    const isActive = sortColumn === column;
+    const alignClass = align === 'left' ? 'text-left' : 'text-center';
+
+    return (
+      <th
+        className={`${alignClass} p-2 cursor-pointer hover:bg-gray-100 select-none transition-colors ${
+          isActive ? 'bg-blue-50 text-blue-700' : ''
+        }`}
+        onClick={() => handleSort(column)}
+      >
+        <div className={`flex items-center gap-1 ${align === 'center' ? 'justify-center' : ''}`}>
+          <span>{label}</span>
+          {isActive && (
+            sortDirection === 'asc' ?
+              <ChevronUp className="w-4 h-4" /> :
+              <ChevronDown className="w-4 h-4" />
+          )}
+        </div>
+      </th>
+    );
+  };
+
+  const sortedLeaderboard = getSortedLeaderboard();
+
   return (
     <>
       {/* Match Photos Carousel */}
@@ -23,21 +141,22 @@ const Leaderboard = ({ teams, getLeaderboard, photos, isAuthenticated, onDeleteP
           <thead>
             <tr className="border-b-2">
               <th className="text-left p-2">Rank</th>
-              <th className="text-left p-2">Team</th>
-              <th className="text-center p-2">Matches</th>
-              <th className="text-center p-2">Win Pts</th>
-              <th className="text-center p-2">Bonus</th>
-              <th className="text-center p-2">Total Pts</th>
-              <th className="text-center p-2">Sets</th>
-              <th className="text-center p-2">Games</th>
+              <SortableHeader column="team" label="Team" align="left" />
+              <SortableHeader column="matches" label="Matches" />
+              <SortableHeader column="wins" label="W-L" />
+              <SortableHeader column="winPoints" label="Win Pts" />
+              <SortableHeader column="bonus" label="Bonus" />
+              <SortableHeader column="totalPoints" label="Total Pts" />
+              <SortableHeader column="sets" label="Sets" />
+              <SortableHeader column="games" label="Games" />
             </tr>
           </thead>
           <tbody>
-            {getLeaderboard().map((team, index) => (
-              <tr key={team.id} className={index < 2 ? 'border-b bg-yellow-50' : 'border-b'}>
+            {sortedLeaderboard.map((team) => (
+              <tr key={team.id} className={team.officialRank <= 2 ? 'border-b bg-yellow-50' : 'border-b'}>
                 <td className="p-2 font-bold">
-                  {index + 1}
-                  {index < 2 && <Trophy className="inline w-4 h-4 ml-1 text-yellow-500" />}
+                  {team.officialRank}
+                  {team.officialRank <= 2 && <Trophy className="inline w-4 h-4 ml-1 text-yellow-500" />}
                 </td>
                 <td className="p-2">
                   <div className="flex items-center gap-2">
@@ -46,6 +165,7 @@ const Leaderboard = ({ teams, getLeaderboard, photos, isAuthenticated, onDeleteP
                   </div>
                 </td>
                 <td className="text-center p-2">{team.matchesPlayed}</td>
+                <td className="text-center p-2">{team.matchWins}-{team.matchLosses}</td>
                 <td className="text-center p-2 font-semibold">{team.matchWinPoints}</td>
                 <td className="text-center p-2 text-sm">
                   {team.cappedBonus.toFixed(1)}

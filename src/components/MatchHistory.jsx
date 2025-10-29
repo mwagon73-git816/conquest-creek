@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 import { TrendingUp, Edit, Trash2, ChevronDown, ChevronUp, Filter } from 'lucide-react';
 
-const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTab, players, userRole, userTeamId }) => {
+const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTab, players, userRole, userTeamId, setEditingMatch }) => {
   const [showFilters, setShowFilters] = useState(false);
   const [selectedTeams, setSelectedTeams] = useState([]);
   const [selectedPlayers, setSelectedPlayers] = useState([]);
   const handleEditMatch = (match) => {
-    // Note: In the full app, this would pass the match data back to MatchEntry
-    // For now, we'll navigate to the entry tab
+    // Pass the match data to MatchEntry for editing
+    setEditingMatch(match);
     setActiveTab('entry');
   };
 

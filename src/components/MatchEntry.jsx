@@ -1,9 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Calendar, Plus, Check, X, Upload, Image as ImageIcon } from 'lucide-react';
 
-const MatchEntry = ({ teams, matches, setMatches, isAuthenticated, setActiveTab, players, captains, onAddPhoto, loginName, userRole, userTeamId }) => {
+const MatchEntry = ({ teams, matches, setMatches, isAuthenticated, setActiveTab, players, captains, onAddPhoto, loginName, userRole, userTeamId, editingMatch, setEditingMatch }) => {
   const [showMatchForm, setShowMatchForm] = useState(false);
-  const [editingMatch, setEditingMatch] = useState(null);
   const [matchFormData, setMatchFormData] = useState({
     date: new Date().toISOString().split('T')[0],
     level: '7.0',
@@ -22,6 +21,29 @@ const MatchEntry = ({ teams, matches, setMatches, isAuthenticated, setActiveTab,
   });
   const [photoFile, setPhotoFile] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
+
+  // Pre-populate form when editing a match
+  useEffect(() => {
+    if (editingMatch) {
+      setMatchFormData({
+        date: editingMatch.date || new Date().toISOString().split('T')[0],
+        level: editingMatch.level || '7.0',
+        team1Id: editingMatch.team1Id ? editingMatch.team1Id.toString() : '',
+        team2Id: editingMatch.team2Id ? editingMatch.team2Id.toString() : '',
+        set1Team1: editingMatch.set1Team1 || '',
+        set1Team2: editingMatch.set1Team2 || '',
+        set2Team1: editingMatch.set2Team1 || '',
+        set2Team2: editingMatch.set2Team2 || '',
+        set3Team1: editingMatch.set3Team1 || '',
+        set3Team2: editingMatch.set3Team2 || '',
+        set3IsTiebreaker: editingMatch.set3IsTiebreaker || false,
+        team1Players: editingMatch.team1Players || [],
+        team2Players: editingMatch.team2Players || [],
+        notes: editingMatch.notes || ''
+      });
+      setShowMatchForm(true);
+    }
+  }, [editingMatch]);
 
   // Calculate match results from set scores
   const calculateMatchResults = () => {
@@ -114,9 +136,9 @@ const MatchEntry = ({ teams, matches, setMatches, isAuthenticated, setActiveTab,
     };
   };
 
-  const sendMatchNotifications = async (matchData) => {
-    // Only send emails if captain is entering a match (not editing)
-    if (userRole !== 'captain' || editingMatch || !captains) {
+  const sendMatchNotifications = async (matchData, isEditing = false) => {
+    // Send emails if captain is entering or editing a match
+    if (userRole !== 'captain' || !captains) {
       return { success: true, message: '' };
     }
 
@@ -158,7 +180,11 @@ const MatchEntry = ({ teams, matches, setMatches, isAuthenticated, setActiveTab,
       let emailsSent = 0;
       let emailsFailed = 0;
 
-      // Send confirmation email to entering captain
+      // Determine email type based on whether we're editing
+      const emailType = isEditing ? 'edit' : 'confirmation';
+      const emailTypeVerify = isEditing ? 'edit' : 'verification';
+
+      // Send email to entering captain (confirmation or edit notification)
       if (enteringCaptain) {
         try {
           const confirmResponse = await fetch('/.netlify/functions/send-match-notification', {
@@ -174,24 +200,25 @@ const MatchEntry = ({ teams, matches, setMatches, isAuthenticated, setActiveTab,
               matchScores: matchScores,
               matchDate: matchData.date,
               matchLevel: matchData.level,
-              emailType: 'confirmation'
+              emailType: emailType,
+              editorName: loginName
             })
           });
 
           if (confirmResponse.ok) {
-            console.log('Confirmation email sent to entering captain');
+            console.log(`${isEditing ? 'Edit' : 'Confirmation'} email sent to entering captain`);
             emailsSent++;
           } else {
-            console.error('Failed to send confirmation email:', await confirmResponse.text());
+            console.error(`Failed to send ${isEditing ? 'edit' : 'confirmation'} email:`, await confirmResponse.text());
             emailsFailed++;
           }
         } catch (error) {
-          console.error('Error sending confirmation email:', error);
+          console.error(`Error sending ${isEditing ? 'edit' : 'confirmation'} email:`, error);
           emailsFailed++;
         }
       }
 
-      // Send verification email to opponent captain
+      // Send email to opponent captain (verification or edit notification)
       if (opponentCaptain) {
         try {
           const verifyResponse = await fetch('/.netlify/functions/send-match-notification', {
@@ -207,32 +234,45 @@ const MatchEntry = ({ teams, matches, setMatches, isAuthenticated, setActiveTab,
               matchScores: matchScores,
               matchDate: matchData.date,
               matchLevel: matchData.level,
-              emailType: 'verification'
+              emailType: emailTypeVerify,
+              editorName: loginName
             })
           });
 
           if (verifyResponse.ok) {
-            console.log('Verification email sent to opponent captain');
+            console.log(`${isEditing ? 'Edit' : 'Verification'} email sent to opponent captain`);
             emailsSent++;
           } else {
-            console.error('Failed to send verification email:', await verifyResponse.text());
+            console.error(`Failed to send ${isEditing ? 'edit' : 'verification'} email:`, await verifyResponse.text());
             emailsFailed++;
           }
         } catch (error) {
-          console.error('Error sending verification email:', error);
+          console.error(`Error sending ${isEditing ? 'edit' : 'verification'} email:`, error);
           emailsFailed++;
         }
       }
 
       // Return results
       if (emailsSent === 2) {
-        return { success: true, message: 'Match saved. Confirmation emails sent to both captains.' };
+        const message = isEditing
+          ? 'Match updated. Notification emails sent to both captains.'
+          : 'Match saved. Confirmation emails sent to both captains.';
+        return { success: true, message };
       } else if (emailsSent > 0) {
-        return { success: true, message: 'Match saved but some email notifications failed.' };
+        const message = isEditing
+          ? 'Match updated but some email notifications failed.'
+          : 'Match saved but some email notifications failed.';
+        return { success: true, message };
       } else if (emailsFailed > 0) {
-        return { success: false, message: 'Match saved but email notifications failed.' };
+        const message = isEditing
+          ? 'Match updated but email notifications failed.'
+          : 'Match saved but email notifications failed.';
+        return { success: false, message };
       } else {
-        return { success: true, message: 'Match saved. No captains with emails found.' };
+        const message = isEditing
+          ? 'Match updated. No captains with emails found.'
+          : 'Match saved. No captains with emails found.';
+        return { success: true, message };
       }
 
     } catch (error) {
@@ -336,10 +376,10 @@ const MatchEntry = ({ teams, matches, setMatches, isAuthenticated, setActiveTab,
     }
 
     // Send email notifications if captain
-    const emailResult = await sendMatchNotifications(matchData);
+    const emailResult = await sendMatchNotifications(matchData, !!editingMatch);
 
     // Show success message
-    if (userRole === 'captain' && !editingMatch && emailResult.message) {
+    if (userRole === 'captain' && emailResult.message) {
       alert(emailResult.message);
     }
 
@@ -497,16 +537,21 @@ const MatchEntry = ({ teams, matches, setMatches, isAuthenticated, setActiveTab,
                   team1Players: [] // Reset players when team changes
                 })}
                 className="w-full px-3 py-2 border rounded"
-                disabled={userRole === 'captain'} // Captains cannot change their team
+                disabled={userRole === 'captain' || !!editingMatch} // Captains cannot change their team, teams cannot be changed when editing
               >
                 <option value="">Select Team 1...</option>
                 {teams.map(t => (
                   <option key={t.id} value={t.id}>{t.name}</option>
                 ))}
               </select>
-              {userRole === 'captain' && (
+              {userRole === 'captain' && !editingMatch && (
                 <p className="text-xs text-gray-600 mt-1">
                   As captain, you can only enter matches for your team
+                </p>
+              )}
+              {editingMatch && (
+                <p className="text-xs text-gray-600 mt-1">
+                  Teams cannot be changed when editing a match
                 </p>
               )}
             </div>
@@ -515,17 +560,23 @@ const MatchEntry = ({ teams, matches, setMatches, isAuthenticated, setActiveTab,
               <select
                 value={matchFormData.team2Id}
                 onChange={(e) => setMatchFormData({
-                  ...matchFormData, 
+                  ...matchFormData,
                   team2Id: e.target.value,
                   team2Players: [] // Reset players when team changes
                 })}
                 className="w-full px-3 py-2 border rounded"
+                disabled={!!editingMatch} // Teams cannot be changed when editing
               >
                 <option value="">Select Team 2...</option>
                 {teams.map(t => (
                   <option key={t.id} value={t.id}>{t.name}</option>
                 ))}
               </select>
+              {editingMatch && (
+                <p className="text-xs text-gray-600 mt-1">
+                  Teams cannot be changed when editing a match
+                </p>
+              )}
             </div>
 
             {/* Team 1 Players */}
