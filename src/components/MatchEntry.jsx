@@ -57,12 +57,10 @@ const MatchEntry = ({ teams, matches, setMatches, isAuthenticated, setActiveTab,
     // Add set 3 games
     if (set3Team1 !== '' && set3Team2 !== '') {
       if (set3IsTiebreaker) {
-        // 10-point tiebreaker: winner gets 1 game, loser gets 0
-        if (set3Winner === 1) {
-          team1Games += 1;
-        } else if (set3Winner === 2) {
-          team2Games += 1;
-        }
+        // 10-point tiebreaker: count actual tiebreaker points
+        // e.g., 10-7 = 10 games for team1, 7 games for team2
+        team1Games += s3t1;
+        team2Games += s3t2;
       } else {
         // Regular set: count actual games
         team1Games += s3t1;
@@ -283,6 +281,16 @@ const MatchEntry = ({ teams, matches, setMatches, isAuthenticated, setActiveTab,
       notes: matchFormData.notes.trim(),
       timestamp: new Date().toISOString()
     };
+
+    // Debug: Log tiebreaker data before saving
+    console.log('=== Match Save Debug ===');
+    console.log('Set 3 Team 1 Score:', matchFormData.set3Team1);
+    console.log('Set 3 Team 2 Score:', matchFormData.set3Team2);
+    console.log('Set 3 Is Tiebreaker:', matchFormData.set3IsTiebreaker);
+    console.log('Total Team 1 Games:', results.team1Games);
+    console.log('Total Team 2 Games:', results.team2Games);
+    console.log('Match Data to Save:', matchData);
+    console.log('=======================');
 
     if (editingMatch) {
       setMatches(matches.map(m =>
