@@ -247,14 +247,20 @@ const App = () => {
         const logEntry = createLogEntry(
           ACTION_TYPES.USER_LOGIN,
           captain.name,
-          { role: 'captain', username: captain.username, teamName: team?.name || 'Unknown' }
+          { role: 'captain', username: captain.username, teamName: team?.name || 'Unassigned' }
         );
         tournamentStorage.addActivityLog(logEntry);
 
         setShowLogin(false);
         setLoginPassword('');
         setActiveTab('entry'); // Captains start on match entry
-        alert('Welcome, Captain ' + captain.name + '!');
+
+        // Show different message for unassigned captains
+        if (!captain.teamId) {
+          alert('Welcome, Captain ' + captain.name + '!\n\nYou are not currently assigned to a team. Please contact the tournament directors to be assigned to a team before you can enter matches.');
+        } else {
+          alert('Welcome, Captain ' + captain.name + '!');
+        }
       } else {
         alert('Invalid username or password.');
       }
@@ -606,6 +612,8 @@ const App = () => {
               setTeams={setTeams}
               players={players}
               setPlayers={setPlayers}
+              captains={captains}
+              setCaptains={setCaptains}
               isAuthenticated={isAuthenticated}
               calculateTeamRatings={calculateTeamRatings}
               getEffectiveRating={getEffectiveRating}
@@ -630,6 +638,7 @@ const App = () => {
               captains={captains}
               setCaptains={setCaptains}
               teams={teams}
+              setTeams={setTeams}
               isAuthenticated={isAuthenticated}
               addLog={addLog}
             />

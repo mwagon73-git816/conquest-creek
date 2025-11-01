@@ -7,6 +7,8 @@ const TeamsManagement = ({
   setTeams,
   players,
   setPlayers,
+  captains,
+  setCaptains,
   isAuthenticated,
   calculateTeamRatings,
   getEffectiveRating,
@@ -16,7 +18,7 @@ const TeamsManagement = ({
   const [editingTeam, setEditingTeam] = useState(null);
   const [teamFormData, setTeamFormData] = useState({
     name: '',
-    captain: '',
+    captainId: null,
     color: '#3B82F6',
     uniformType: 'none',
     uniformPhotoSubmitted: false,
@@ -32,7 +34,7 @@ const TeamsManagement = ({
     setEditingTeam(null);
     setTeamFormData({
       name: '',
-      captain: '',
+      captainId: null,
       color: '#3B82F6',
       uniformType: 'none',
       uniformPhotoSubmitted: false,
@@ -48,7 +50,7 @@ const TeamsManagement = ({
     setEditingTeam(team);
     setTeamFormData({
       name: team.name,
-      captain: team.captain,
+      captainId: team.captainId || null,
       color: team.color,
       uniformType: team.bonuses?.uniformType || 'none',
       uniformPhotoSubmitted: team.bonuses?.uniformPhotoSubmitted || false,
@@ -62,14 +64,32 @@ const TeamsManagement = ({
   };
 
   const handleSaveTeam = () => {
-    if (!teamFormData.name || !teamFormData.captain) {
-      alert('Team name and captain are required');
+    if (!teamFormData.name) {
+      alert('Team name is required');
       return;
+    }
+
+    const selectedCaptainId = teamFormData.captainId ? parseInt(teamFormData.captainId) : null;
+
+    // Validation: Check if selected captain is already assigned to another team
+    if (selectedCaptainId) {
+      const captainAlreadyAssigned = captains.find(c =>
+        c.id === selectedCaptainId &&
+        c.teamId !== null &&
+        (!editingTeam || c.teamId !== editingTeam.id)
+      );
+
+      if (captainAlreadyAssigned) {
+        const otherTeam = teams.find(t => t.id === captainAlreadyAssigned.teamId);
+        if (!confirm(`Warning: Captain "${captains.find(c => c.id === selectedCaptainId)?.name}" is already assigned to team "${otherTeam?.name}". Assigning them to this team will remove them from "${otherTeam?.name}". Continue?`)) {
+          return;
+        }
+      }
     }
 
     const teamData = {
       name: teamFormData.name.trim(),
-      captain: teamFormData.captain.trim(),
+      captainId: selectedCaptainId,
       color: teamFormData.color,
       bonuses: {
         uniformType: teamFormData.uniformType,
@@ -78,15 +98,46 @@ const TeamsManagement = ({
       }
     };
 
+    // Synchronization logic for captain assignments
+    const oldCaptainId = editingTeam?.captainId || null;
+
+    // If captain changed, update captain records
+    if (oldCaptainId !== selectedCaptainId) {
+      // Unassign old captain
+      if (oldCaptainId) {
+        setCaptains(captains.map(c =>
+          c.id === oldCaptainId ? { ...c, teamId: null } : c
+        ));
+      }
+
+      // Assign new captain
+      if (selectedCaptainId) {
+        setCaptains(captains.map(c => {
+          if (c.id === selectedCaptainId) {
+            return { ...c, teamId: editingTeam ? editingTeam.id : null }; // Will be updated below
+          }
+          return c;
+        }));
+      }
+    }
+
     if (editingTeam) {
       const before = { ...editingTeam };
-      const after = { ...editingTeam, ...teamData };
+      const updatedTeam = { ...editingTeam, ...teamData };
+      const after = updatedTeam;
 
       setTeams(teams.map(t =>
         t.id === editingTeam.id
-          ? { ...t, ...teamData }
+          ? updatedTeam
           : t
       ));
+
+      // Update new captain's teamId to this team
+      if (selectedCaptainId) {
+        setCaptains(captains.map(c =>
+          c.id === selectedCaptainId ? { ...c, teamId: editingTeam.id } : c
+        ));
+      }
 
       // Log the edit
       addLog(
@@ -103,6 +154,13 @@ const TeamsManagement = ({
       };
 
       setTeams([...teams, newTeam]);
+
+      // Update captain's teamId to new team
+      if (selectedCaptainId) {
+        setCaptains(captains.map(c =>
+          c.id === selectedCaptainId ? { ...c, teamId: newTeam.id } : c
+        ));
+      }
 
       // Log the add
       addLog(
@@ -121,7 +179,12 @@ const TeamsManagement = ({
   const handleDeleteTeam = (teamId) => {
     const team = teams.find(t => t.id === teamId);
     if (confirm('Delete this team?')) {
+      // Unassign all players
       setPlayers(players.map(p => p.teamId === teamId ? {...p, teamId: null} : p));
+
+      // Unassign captain (set their teamId to null, don't delete captain)
+      setCaptains(captains.map(c => c.teamId === teamId ? {...c, teamId: null} : c));
+
       setTeams(teams.filter(t => t.id !== teamId));
 
       // Log the deletion
@@ -219,14 +282,25 @@ const TeamsManagement = ({
               />
             </div>
             <div>
-              <label className="block text-sm font-semibold mb-1">Captain Name *</label>
-              <input
-                type="text"
-                value={teamFormData.captain}
-                onChange={(e) => setTeamFormData({...teamFormData, captain: e.target.value})}
+              <label className="block text-sm font-semibold mb-1">Assign Captain (Optional)</label>
+              <select
+                value={teamFormData.captainId || ''}
+                onChange={(e) => setTeamFormData({...teamFormData, captainId: e.target.value || null})}
                 className="w-full px-3 py-2 border rounded"
-                placeholder="John Doe"
-              />
+              >
+                <option value="">No Captain</option>
+                {captains
+                  .filter(c => c.status === 'active' && (c.teamId === null || c.teamId === editingTeam?.id))
+                  .map(captain => (
+                    <option key={captain.id} value={captain.id}>
+                      {captain.name}
+                    </option>
+                  ))
+                }
+              </select>
+              <p className="text-xs text-gray-600 mt-1">
+                Available captains (not assigned to other teams)
+              </p>
             </div>
             <div>
               <label className="block text-sm font-semibold mb-1">Team Color</label>
@@ -364,7 +438,9 @@ const TeamsManagement = ({
                   <div className="w-8 h-8 rounded" style={{ backgroundColor: team.color }} />
                   <div>
                     <div className="font-bold text-lg">{team.name}</div>
-                    <div className="text-sm text-gray-600">Captain: {team.captain}</div>
+                    <div className="text-sm text-gray-600">
+                      Captain: {team.captainId ? (captains.find(c => c.id === team.captainId)?.name || 'Unknown') : 'No Captain'}
+                    </div>
                   </div>
                 </div>
                 {isAuthenticated && (

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Users, Plus, Edit, Trash2, Check, X, Eye, EyeOff } from 'lucide-react';
 
-const CaptainManagement = ({ captains, setCaptains, teams, isAuthenticated }) => {
+const CaptainManagement = ({ captains, setCaptains, teams, setTeams, isAuthenticated }) => {
   const [showForm, setShowForm] = useState(false);
   const [editingCaptain, setEditingCaptain] = useState(null);
   const [formData, setFormData] = useState({
@@ -92,10 +92,6 @@ const CaptainManagement = ({ captains, setCaptains, teams, isAuthenticated }) =>
       alert('Please enter a valid email address');
       return;
     }
-    if (!formData.teamId) {
-      alert('Please assign a team');
-      return;
-    }
 
     // Check for duplicate username (except when editing same captain)
     const duplicateUsername = captains.find(c =>
@@ -107,25 +103,68 @@ const CaptainManagement = ({ captains, setCaptains, teams, isAuthenticated }) =>
       return;
     }
 
+    const selectedTeamId = formData.teamId ? parseInt(formData.teamId) : null;
+
     // Check if team already has a captain (except when editing same captain)
-    const teamHasCaptain = captains.find(c =>
-      c.teamId === parseInt(formData.teamId) &&
-      c.status === 'active' &&
-      (!editingCaptain || c.id !== editingCaptain.id)
-    );
-    if (teamHasCaptain) {
-      const team = teams.find(t => t.id === parseInt(formData.teamId));
-      alert(`Team "${team?.name}" already has an active captain: ${teamHasCaptain.name}`);
-      return;
+    if (selectedTeamId) {
+      const teamHasCaptain = captains.find(c =>
+        c.teamId === selectedTeamId &&
+        c.status === 'active' &&
+        (!editingCaptain || c.id !== editingCaptain.id)
+      );
+      if (teamHasCaptain) {
+        const team = teams.find(t => t.id === selectedTeamId);
+        if (!confirm(`Warning: Team "${team?.name}" already has an active captain: ${teamHasCaptain.name}. Assigning this captain to the team will unassign "${teamHasCaptain.name}". Continue?`)) {
+          return;
+        }
+      }
+
+      // Check if team already has a captain assigned via team's captainId
+      const team = teams.find(t => t.id === selectedTeamId);
+      if (team && team.captainId && team.captainId !== editingCaptain?.id) {
+        const existingCaptain = captains.find(c => c.id === team.captainId);
+        if (existingCaptain && !confirm(`Warning: Team "${team.name}" already has captain "${existingCaptain.name}" assigned. Assigning this captain will replace them. Continue?`)) {
+          return;
+        }
+      }
     }
+
+    // Synchronization logic
+    const oldTeamId = editingCaptain?.teamId || null;
 
     if (editingCaptain) {
       // Update existing captain
+      const updatedCaptain = { ...editingCaptain, ...formData, teamId: selectedTeamId };
       setCaptains(captains.map(c =>
-        c.id === editingCaptain.id
-          ? { ...c, ...formData, teamId: parseInt(formData.teamId) }
-          : c
+        c.id === editingCaptain.id ? updatedCaptain : c
       ));
+
+      // Synchronize team assignments
+      if (oldTeamId !== selectedTeamId) {
+        // Unassign from old team
+        if (oldTeamId) {
+          setTeams(teams.map(t =>
+            t.id === oldTeamId ? { ...t, captainId: null } : t
+          ));
+        }
+
+        // Assign to new team
+        if (selectedTeamId) {
+          setTeams(teams.map(t => {
+            if (t.id === selectedTeamId) {
+              // If team had another captain, unassign them first
+              if (t.captainId && t.captainId !== editingCaptain.id) {
+                setCaptains(captains.map(c =>
+                  c.id === t.captainId ? { ...c, teamId: null } : c
+                ));
+              }
+              return { ...t, captainId: editingCaptain.id };
+            }
+            return t;
+          }));
+        }
+      }
+
       setShowForm(false);
       setEditingCaptain(null);
     } else {
@@ -137,10 +176,26 @@ const CaptainManagement = ({ captains, setCaptains, teams, isAuthenticated }) =>
         name: formData.name,
         email: formData.email,
         phone: formData.phone,
-        teamId: parseInt(formData.teamId),
+        teamId: selectedTeamId,
         status: formData.status
       };
       setCaptains([...captains, newCaptain]);
+
+      // Assign to team if selected
+      if (selectedTeamId) {
+        setTeams(teams.map(t => {
+          if (t.id === selectedTeamId) {
+            // If team had another captain, unassign them first
+            if (t.captainId) {
+              setCaptains(captains.map(c =>
+                c.id === t.captainId ? { ...c, teamId: null } : c
+              ));
+            }
+            return { ...t, captainId: newCaptain.id };
+          }
+          return t;
+        }));
+      }
 
       // Show credentials after creation
       setNewCaptainCredentials({
@@ -166,6 +221,12 @@ const CaptainManagement = ({ captains, setCaptains, teams, isAuthenticated }) =>
   const handleDelete = (captainId) => {
     const captain = captains.find(c => c.id === captainId);
     if (confirm(`Delete captain "${captain?.name}"? This will remove their login access.`)) {
+      // Remove captain assignment from their team
+      if (captain?.teamId) {
+        setTeams(teams.map(t =>
+          t.id === captain.teamId ? { ...t, captainId: null } : t
+        ));
+      }
       setCaptains(captains.filter(c => c.id !== captainId));
     }
   };
@@ -304,17 +365,20 @@ const CaptainManagement = ({ captains, setCaptains, teams, isAuthenticated }) =>
             </div>
 
             <div>
-              <label className="block text-sm font-semibold mb-1">Assigned Team *</label>
+              <label className="block text-sm font-semibold mb-1">Assigned Team (Optional)</label>
               <select
-                value={formData.teamId}
-                onChange={(e) => setFormData({ ...formData, teamId: e.target.value })}
+                value={formData.teamId || ''}
+                onChange={(e) => setFormData({ ...formData, teamId: e.target.value || null })}
                 className="w-full px-3 py-2 border rounded"
               >
-                <option value="">Select Team...</option>
+                <option value="">No Team</option>
                 {teams.map(team => (
                   <option key={team.id} value={team.id}>{team.name}</option>
                 ))}
               </select>
+              <p className="text-xs text-gray-600 mt-1">
+                Captain can be assigned to a team later
+              </p>
             </div>
 
             <div>
@@ -378,7 +442,7 @@ const CaptainManagement = ({ captains, setCaptains, teams, isAuthenticated }) =>
                     </div>
                     <div className="text-sm text-gray-600 space-y-1">
                       <p><strong>Username:</strong> {captain.username}</p>
-                      <p><strong>Team:</strong> {team ? team.name : 'Unknown Team'}</p>
+                      <p><strong>Team:</strong> <span className={!captain.teamId ? 'text-gray-400 italic' : ''}>{team ? team.name : 'Unassigned'}</span></p>
                       {captain.email && (
                         <p><strong>Email:</strong> {captain.email}</p>
                       )}

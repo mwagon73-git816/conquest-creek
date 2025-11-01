@@ -396,7 +396,7 @@ const MatchEntry = ({ teams, matches, setMatches, isAuthenticated, setActiveTab,
     setMatchFormData({
       date: new Date().toISOString().split('T')[0],
       level: '7.0',
-      team1Id: userRole === 'captain' ? userTeamId.toString() : '', // Auto-select captain's team
+      team1Id: userRole === 'captain' && userTeamId ? userTeamId.toString() : '', // Auto-select captain's team
       team2Id: '',
       set1Team1: '',
       set1Team2: '',
@@ -476,9 +476,9 @@ const MatchEntry = ({ teams, matches, setMatches, isAuthenticated, setActiveTab,
           <Calendar className="w-6 h-6" />
           Record Match Result
         </h2>
-        {isAuthenticated && !showMatchForm && (
-          <button 
-            onClick={handleAddNewMatch} 
+        {isAuthenticated && !showMatchForm && (userRole !== 'captain' || userTeamId) && (
+          <button
+            onClick={handleAddNewMatch}
             className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 flex items-center gap-2"
           >
             <Plus className="w-4 h-4" />
@@ -493,7 +493,17 @@ const MatchEntry = ({ teams, matches, setMatches, isAuthenticated, setActiveTab,
         </div>
       )}
 
-      {isAuthenticated && showMatchForm && (
+      {isAuthenticated && userRole === 'captain' && !userTeamId && (
+        <div className="bg-orange-50 border border-orange-300 rounded p-4">
+          <p className="text-sm text-orange-800">
+            <strong>You are not assigned to a team.</strong>
+            <br />
+            Please contact the tournament directors to be assigned to a team before you can enter matches.
+          </p>
+        </div>
+      )}
+
+      {isAuthenticated && (userRole !== 'captain' || userTeamId) && showMatchForm && (
         <div className="bg-green-50 border-2 border-green-300 rounded-lg p-6 mb-6">
           <h3 className="text-xl font-bold mb-4">
             {editingMatch ? 'Edit Match' : 'Record New Match'}
