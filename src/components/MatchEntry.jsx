@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Calendar, Plus, Check, X, Upload, Image as ImageIcon } from 'lucide-react';
+import { ACTION_TYPES } from '../services/activityLogger';
 
-const MatchEntry = ({ teams, matches, setMatches, isAuthenticated, setActiveTab, players, captains, onAddPhoto, loginName, userRole, userTeamId, editingMatch, setEditingMatch }) => {
+const MatchEntry = ({ teams, matches, setMatches, isAuthenticated, setActiveTab, players, captains, onAddPhoto, loginName, userRole, userTeamId, editingMatch, setEditingMatch, addLog }) => {
   const [showMatchForm, setShowMatchForm] = useState(false);
   const [matchFormData, setMatchFormData] = useState({
     date: new Date().toISOString().split('T')[0],

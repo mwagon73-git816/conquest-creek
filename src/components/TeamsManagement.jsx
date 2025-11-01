@@ -1,14 +1,16 @@
 import React, { useState } from 'react';
 import { Users, Plus, Trash2, X, Award, Edit, Check } from 'lucide-react';
+import { ACTION_TYPES } from '../services/activityLogger';
 
-const TeamsManagement = ({ 
-  teams, 
-  setTeams, 
-  players, 
-  setPlayers, 
-  isAuthenticated, 
+const TeamsManagement = ({
+  teams,
+  setTeams,
+  players,
+  setPlayers,
+  isAuthenticated,
   calculateTeamRatings,
-  getEffectiveRating
+  getEffectiveRating,
+  addLog
 }) => {
   const [showTeamForm, setShowTeamForm] = useState(false);
   const [editingTeam, setEditingTeam] = useState(null);
@@ -77,16 +79,39 @@ const TeamsManagement = ({
     };
 
     if (editingTeam) {
-      setTeams(teams.map(t => 
-        t.id === editingTeam.id 
+      const before = { ...editingTeam };
+      const after = { ...editingTeam, ...teamData };
+
+      setTeams(teams.map(t =>
+        t.id === editingTeam.id
           ? { ...t, ...teamData }
           : t
       ));
+
+      // Log the edit
+      addLog(
+        ACTION_TYPES.TEAM_EDITED,
+        { teamName: teamData.name, teamId: editingTeam.id },
+        editingTeam.id,
+        before,
+        after
+      );
     } else {
-      setTeams([...teams, {
+      const newTeam = {
         id: Date.now(),
         ...teamData
-      }]);
+      };
+
+      setTeams([...teams, newTeam]);
+
+      // Log the add
+      addLog(
+        ACTION_TYPES.TEAM_ADDED,
+        { teamName: teamData.name, teamId: newTeam.id },
+        newTeam.id,
+        null,
+        newTeam
+      );
     }
 
     setShowTeamForm(false);
@@ -94,15 +119,42 @@ const TeamsManagement = ({
   };
 
   const handleDeleteTeam = (teamId) => {
+    const team = teams.find(t => t.id === teamId);
     if (confirm('Delete this team?')) {
       setPlayers(players.map(p => p.teamId === teamId ? {...p, teamId: null} : p));
       setTeams(teams.filter(t => t.id !== teamId));
+
+      // Log the deletion
+      if (team) {
+        addLog(
+          ACTION_TYPES.TEAM_DELETED,
+          { teamName: team.name, teamId },
+          teamId,
+          team,
+          null
+        );
+      }
     }
   };
 
   const handleRemovePlayer = (playerId) => {
+    const player = players.find(p => p.id === playerId);
+    const team = player ? teams.find(t => t.id === player.teamId) : null;
+
     if (confirm('Remove player from team?')) {
       setPlayers(players.map(p => p.id === playerId ? {...p, teamId: null} : p));
+
+      // Log the removal
+      if (player && team) {
+        const playerName = `${player.firstName} ${player.lastName}`;
+        addLog(
+          ACTION_TYPES.TEAM_PLAYER_REMOVED,
+          { playerName, teamName: team.name },
+          playerId,
+          { ...player },
+          { ...player, teamId: null }
+        );
+      }
     }
   };
 

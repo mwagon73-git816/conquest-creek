@@ -23,5 +23,6 @@ export const COLLECTIONS = {
   BONUSES: 'bonuses',
   AUTH: 'auth',
   PHOTOS: 'photos',
-  CAPTAINS: 'captains'
+  CAPTAINS: 'captains',
+  ACTIVITY_LOGS: 'activity_logs'
 };

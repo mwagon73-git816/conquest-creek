@@ -1,14 +1,16 @@
 import React, { useState } from 'react';
 import { UserPlus, Plus, Edit, Trash2, Check, X, Upload, AlertTriangle } from 'lucide-react';
 import Papa from 'papaparse';
+import { ACTION_TYPES } from '../services/activityLogger';
 
-const PlayerManagement = ({ 
-  players, 
-  setPlayers, 
-  teams, 
-  isAuthenticated, 
+const PlayerManagement = ({
+  players,
+  setPlayers,
+  teams,
+  isAuthenticated,
   getEffectiveRating,
-  canAddPlayerToTeam 
+  canAddPlayerToTeam,
+  addLog
 }) => {
   const [showPlayerForm, setShowPlayerForm] = useState(false);
   const [editingPlayer, setEditingPlayer] = useState(null);
@@ -34,7 +36,7 @@ const PlayerManagement = ({
       alert('First name and last name are required');
       return;
     }
-    
+
     const playerData = {
       firstName: playerFormData.firstName.trim(),
       lastName: playerFormData.lastName.trim(),
@@ -46,20 +48,45 @@ const PlayerManagement = ({
       status: playerFormData.status
     };
 
+    const playerName = `${playerData.firstName} ${playerData.lastName}`;
+
     if (editingPlayer) {
-      setPlayers(players.map(p => 
-        p.id === editingPlayer.id 
+      const before = { ...editingPlayer };
+      const after = { ...editingPlayer, ...playerData };
+
+      setPlayers(players.map(p =>
+        p.id === editingPlayer.id
           ? {...p, ...playerData}
           : p
       ));
+
+      // Log the edit
+      addLog(
+        ACTION_TYPES.PLAYER_EDITED,
+        { playerName, playerId: editingPlayer.id },
+        editingPlayer.id,
+        before,
+        after
+      );
     } else {
-      setPlayers([...players, {
+      const newPlayer = {
         id: Date.now(),
         teamId: null,
         ...playerData
-      }]);
+      };
+
+      setPlayers([...players, newPlayer]);
+
+      // Log the add
+      addLog(
+        ACTION_TYPES.PLAYER_ADDED,
+        { playerName, playerId: newPlayer.id },
+        newPlayer.id,
+        null,
+        newPlayer
+      );
     }
-    
+
     setShowPlayerForm(false);
     setEditingPlayer(null);
   };
@@ -95,15 +122,40 @@ const PlayerManagement = ({
   };
 
   const handleDeletePlayer = (playerId) => {
+    const player = players.find(p => p.id === playerId);
     if (confirm('Delete this player?')) {
       setPlayers(players.filter(p => p.id !== playerId));
+
+      // Log the deletion
+      if (player) {
+        const playerName = `${player.firstName} ${player.lastName}`;
+        addLog(
+          ACTION_TYPES.PLAYER_DELETED,
+          { playerName, playerId },
+          playerId,
+          player,
+          null
+        );
+      }
     }
   };
 
   const handleAssignTeam = (player, teamId) => {
     const check = canAddPlayerToTeam(player, teamId);
     if (check.allowed) {
+      const team = teams.find(t => t.id === teamId);
+      const playerName = `${player.firstName} ${player.lastName}`;
+
       setPlayers(players.map(p => p.id === player.id ? {...p, teamId} : p));
+
+      // Log the team assignment
+      addLog(
+        ACTION_TYPES.TEAM_PLAYER_ADDED,
+        { playerName, teamName: team?.name || 'Unknown', teamId },
+        player.id,
+        { ...player },
+        { ...player, teamId }
+      );
     } else {
       alert(check.reason);
     }
@@ -237,6 +289,17 @@ const PlayerManagement = ({
   };
 
   const handleConfirmDeleteAll = () => {
+    const playerCount = players.length;
+
+    // Log the bulk deletion with WARNING flag
+    addLog(
+      ACTION_TYPES.PLAYERS_BULK_DELETE,
+      { count: playerCount, warning: 'BULK_DELETE_ALL_PLAYERS' },
+      null,
+      { playerCount, playerIds: players.map(p => p.id) },
+      null
+    );
+
     // Clear all players
     setPlayers([]);
 

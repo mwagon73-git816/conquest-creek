@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { tournamentStorage } from './services/storage';
+import { createLogEntry, ACTION_TYPES } from './services/activityLogger';
 import Header from './components/Header';
 import TabNavigation from './components/TabNavigation';
 import LoginModal from './components/LoginModal';
@@ -36,6 +37,17 @@ const App = () => {
     { username: 'MW#', name: 'Matt Wagoner', role: 'director' },
     { username: 'JN$', name: 'John Nguyen', role: 'director' }
   ];
+
+  // Helper function to add activity logs
+  const addLog = async (action, details, entityId = null, before = null, after = null) => {
+    try {
+      const user = loginName || 'System';
+      const logEntry = createLogEntry(action, user, details, entityId, before, after);
+      await tournamentStorage.addActivityLog(logEntry);
+    } catch (error) {
+      console.error('Error adding activity log:', error);
+    }
+  };
 
   useEffect(() => {
     const loadData = async () => {
@@ -192,6 +204,15 @@ const App = () => {
           expiresAt: expiresAt
         }));
         setLoginName(director.name);
+
+        // Log the login
+        const logEntry = createLogEntry(
+          ACTION_TYPES.USER_LOGIN,
+          director.name,
+          { role: 'director', username: director.username }
+        );
+        tournamentStorage.addActivityLog(logEntry);
+
         setShowLogin(false);
         setLoginPassword('');
         alert('Welcome, ' + director.name + '!');
@@ -220,6 +241,16 @@ const App = () => {
           expiresAt: expiresAt
         }));
         setLoginName(captain.name);
+
+        // Log the login
+        const team = teams.find(t => t.id === captain.teamId);
+        const logEntry = createLogEntry(
+          ACTION_TYPES.USER_LOGIN,
+          captain.name,
+          { role: 'captain', username: captain.username, teamName: team?.name || 'Unknown' }
+        );
+        tournamentStorage.addActivityLog(logEntry);
+
         setShowLogin(false);
         setLoginPassword('');
         setActiveTab('entry'); // Captains start on match entry
@@ -230,7 +261,15 @@ const App = () => {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    // Log the logout before clearing the user info
+    const logEntry = createLogEntry(
+      ACTION_TYPES.USER_LOGOUT,
+      loginName || 'Unknown',
+      { role: userRole }
+    );
+    await tournamentStorage.addActivityLog(logEntry);
+
     setIsAuthenticated(false);
     setLoginName('');
     setUserRole('');
@@ -570,6 +609,7 @@ const App = () => {
               isAuthenticated={isAuthenticated}
               calculateTeamRatings={calculateTeamRatings}
               getEffectiveRating={getEffectiveRating}
+              addLog={addLog}
             />
           )}
 
@@ -581,6 +621,7 @@ const App = () => {
               isAuthenticated={isAuthenticated}
               getEffectiveRating={getEffectiveRating}
               canAddPlayerToTeam={canAddPlayerToTeam}
+              addLog={addLog}
             />
           )}
 
@@ -590,6 +631,7 @@ const App = () => {
               setCaptains={setCaptains}
               teams={teams}
               isAuthenticated={isAuthenticated}
+              addLog={addLog}
             />
           )}
 
@@ -608,6 +650,7 @@ const App = () => {
               userTeamId={userTeamId}
               editingMatch={editingMatch}
               setEditingMatch={setEditingMatch}
+              addLog={addLog}
             />
           )}
 
@@ -622,6 +665,7 @@ const App = () => {
               userRole={userRole}
               userTeamId={userTeamId}
               setEditingMatch={setEditingMatch}
+              addLog={addLog}
             />
           )}
         </div>

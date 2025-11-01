@@ -1,4 +1,4 @@
-import { doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, deleteDoc, collection, addDoc, query, orderBy, limit, getDocs } from 'firebase/firestore';
 import { db, COLLECTIONS } from '../firebase';
 
 export const storage = {
@@ -107,5 +107,37 @@ export const tournamentStorage = {
     await storage.delete(COLLECTIONS.MATCHES);
     await storage.delete(COLLECTIONS.BONUSES);
     return true;
+  },
+
+  async addActivityLog(logEntry) {
+    try {
+      const logsCollection = collection(db, COLLECTIONS.ACTIVITY_LOGS);
+      await addDoc(logsCollection, logEntry);
+      return true;
+    } catch (error) {
+      console.error('Error adding activity log:', error);
+      throw error;
+    }
+  },
+
+  async getActivityLogs(limitCount = 100) {
+    try {
+      const logsCollection = collection(db, COLLECTIONS.ACTIVITY_LOGS);
+      const q = query(logsCollection, orderBy('timestamp', 'desc'), limit(limitCount));
+      const querySnapshot = await getDocs(q);
+
+      const logs = [];
+      querySnapshot.forEach((doc) => {
+        logs.push({
+          id: doc.id,
+          ...doc.data()
+        });
+      });
+
+      return logs;
+    } catch (error) {
+      console.error('Error getting activity logs:', error);
+      throw error;
+    }
   }
 };
