@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Users, Plus, Edit, Trash2, Check, X, Eye, EyeOff } from 'lucide-react';
+import { ACTION_TYPES } from '../services/activityLogger';
 
-const CaptainManagement = ({ captains, setCaptains, teams, setTeams, isAuthenticated }) => {
+const CaptainManagement = ({ captains, setCaptains, teams, setTeams, isAuthenticated, addLog }) => {
   const [showForm, setShowForm] = useState(false);
   const [editingCaptain, setEditingCaptain] = useState(null);
   const [formData, setFormData] = useState({
@@ -134,7 +135,10 @@ const CaptainManagement = ({ captains, setCaptains, teams, setTeams, isAuthentic
 
     if (editingCaptain) {
       // Update existing captain
+      const before = { ...editingCaptain };
       const updatedCaptain = { ...editingCaptain, ...formData, teamId: selectedTeamId };
+      const after = updatedCaptain;
+
       setCaptains(captains.map(c =>
         c.id === editingCaptain.id ? updatedCaptain : c
       ));
@@ -163,6 +167,18 @@ const CaptainManagement = ({ captains, setCaptains, teams, setTeams, isAuthentic
             return t;
           }));
         }
+      }
+
+      // Log the edit
+      if (addLog) {
+        const team = selectedTeamId ? teams.find(t => t.id === selectedTeamId) : null;
+        addLog(
+          ACTION_TYPES.CAPTAIN_EDITED,
+          { captainName: updatedCaptain.name, teamName: team?.name || 'Unassigned' },
+          editingCaptain.id,
+          before,
+          after
+        );
       }
 
       setShowForm(false);
@@ -197,6 +213,18 @@ const CaptainManagement = ({ captains, setCaptains, teams, setTeams, isAuthentic
         }));
       }
 
+      // Log the creation
+      if (addLog) {
+        const team = selectedTeamId ? teams.find(t => t.id === selectedTeamId) : null;
+        addLog(
+          ACTION_TYPES.CAPTAIN_CREATED,
+          { captainName: newCaptain.name, teamName: team?.name || 'Unassigned' },
+          newCaptain.id,
+          null,
+          newCaptain
+        );
+      }
+
       // Show credentials after creation
       setNewCaptainCredentials({
         username: formData.username,
@@ -228,6 +256,18 @@ const CaptainManagement = ({ captains, setCaptains, teams, setTeams, isAuthentic
         ));
       }
       setCaptains(captains.filter(c => c.id !== captainId));
+
+      // Log the deletion
+      if (addLog && captain) {
+        const team = captain.teamId ? teams.find(t => t.id === captain.teamId) : null;
+        addLog(
+          ACTION_TYPES.CAPTAIN_DELETED,
+          { captainName: captain.name, teamName: team?.name || 'Unassigned' },
+          captainId,
+          captain,
+          null
+        );
+      }
     }
   };
 

@@ -180,7 +180,7 @@ const generateDescription = (logEntry) => {
 /**
  * Filters log entries by action category
  * @param {array} logs - Array of log entries
- * @param {string} filter - Filter type ('all', 'players', 'teams', 'matches', 'deletions')
+ * @param {string} filter - Filter type ('all', 'players', 'teams', 'matches', 'captains', 'deletions')
  * @returns {array} Filtered log entries
  */
 export const filterLogs = (logs, filter) => {
@@ -207,6 +207,12 @@ export const filterLogs = (logs, filter) => {
     ACTION_TYPES.MATCH_DELETED
   ];
 
+  const captainActions = [
+    ACTION_TYPES.CAPTAIN_CREATED,
+    ACTION_TYPES.CAPTAIN_EDITED,
+    ACTION_TYPES.CAPTAIN_DELETED
+  ];
+
   const deletionActions = [
     ACTION_TYPES.PLAYER_DELETED,
     ACTION_TYPES.PLAYERS_BULK_DELETE,
@@ -225,6 +231,8 @@ export const filterLogs = (logs, filter) => {
       return logs.filter(log => teamActions.includes(log.action));
     case 'matches':
       return logs.filter(log => matchActions.includes(log.action));
+    case 'captains':
+      return logs.filter(log => captainActions.includes(log.action));
     case 'deletions':
       return logs.filter(log => deletionActions.includes(log.action));
     default:

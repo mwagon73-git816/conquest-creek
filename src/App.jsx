@@ -11,6 +11,7 @@ import PlayerManagement from './components/PlayerManagement';
 import CaptainManagement from './components/CaptainManagement';
 import MatchEntry from './components/MatchEntry';
 import MatchHistory from './components/MatchHistory';
+import ActivityLog from './components/ActivityLog';
 import TournamentRules from './components/TournamentRules';
 
 const App = () => {
@@ -21,6 +22,7 @@ const App = () => {
   const [trades, setTrades] = useState([]);
   const [photos, setPhotos] = useState([]);
   const [captains, setCaptains] = useState([]);
+  const [activityLogs, setActivityLogs] = useState([]);
   const [activeTab, setActiveTab] = useState('leaderboard');
   const [loading, setLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -89,6 +91,10 @@ const App = () => {
         const captainsData = await tournamentStorage.getCaptains();
         if (captainsData) setCaptains(JSON.parse(captainsData));
 
+        // Load activity logs (most recent 100)
+        const logsData = await tournamentStorage.getActivityLogs(100);
+        if (logsData) setActivityLogs(logsData);
+
         const authData = await tournamentStorage.getAuthSession();
         if (authData) {
           const session = JSON.parse(authData);
@@ -105,7 +111,7 @@ const App = () => {
             tournamentStorage.deleteAuthSession();
           }
         }
-        
+
         setSaveStatus('Data loaded');
       } catch (error) {
         console.error('Error loading data:', error);
@@ -675,6 +681,13 @@ const App = () => {
               userTeamId={userTeamId}
               setEditingMatch={setEditingMatch}
               addLog={addLog}
+            />
+          )}
+
+          {activeTab === 'activity' && (
+            <ActivityLog
+              logs={activityLogs}
+              onRefresh={(newLogs) => setActivityLogs(newLogs)}
             />
           )}
         </div>
