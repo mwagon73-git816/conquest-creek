@@ -11,6 +11,7 @@ import PlayerManagement from './components/PlayerManagement';
 import CaptainManagement from './components/CaptainManagement';
 import MatchEntry from './components/MatchEntry';
 import MatchHistory from './components/MatchHistory';
+import MediaGallery from './components/MediaGallery';
 import ActivityLog from './components/ActivityLog';
 import TournamentRules from './components/TournamentRules';
 
@@ -296,9 +297,9 @@ const App = () => {
   };
 
   const handleAddPhoto = (photoData) => {
-    // Enforce max 20 photos limit
+    // Enforce max 50 photos limit
     let updatedPhotos = [...photos];
-    if (updatedPhotos.length >= 20) {
+    if (updatedPhotos.length >= 50) {
       // Remove oldest photo
       updatedPhotos.sort((a, b) => new Date(a.uploadTimestamp) - new Date(b.uploadTimestamp));
       updatedPhotos = updatedPhotos.slice(1);
@@ -670,6 +671,18 @@ const App = () => {
               userTeamId={userTeamId}
               setEditingMatch={setEditingMatch}
               addLog={addLog}
+            />
+          )}
+
+          {activeTab === 'media' && (
+            <MediaGallery
+              photos={photos}
+              teams={teams}
+              isAuthenticated={isAuthenticated}
+              userRole={userRole}
+              onAddPhoto={handleAddPhoto}
+              onDeletePhoto={handleDeletePhoto}
+              maxPhotos={50}
             />
           )}
 
