@@ -13,7 +13,7 @@ const TournamentRules = () => {
         <div>
           <p className="font-semibold mb-1">Team Composition</p>
           <ul className="space-y-1">
-            <li>• Team Limit: 6 men (21.0 max rating), 2 women (7.0 max rating) = 28.0 total</li>
+            <li>• Team Roster: Maximum 9 players per team (any gender distribution allowed)</li>
             <li>• Dynamic rating takes priority over NTRP rating when available</li>
           </ul>
         </div>
@@ -34,7 +34,7 @@ const TournamentRules = () => {
           <p className="font-semibold mb-1">Bonus Points</p>
           <ul className="space-y-1">
             <li>• Volume Bonuses (per month): 5+ matches (+1), 10+ (+2), 15+ (+3), 20+ (+4)</li>
-            <li>• Full Roster Participation: +1 per month if all 8 team members play</li>
+            <li>• Full Roster Participation: +1 per month if all 9 team members play</li>
             <li>• Variety Bonus 1: +1 per month for playing 3+ different teams</li>
             <li>• Variety Bonus 2: +1 per month for playing at 3+ different NTRP levels</li>
             <li>• Mixed Doubles Bonus: +1 per month for at least 2 mixed doubles matches</li>

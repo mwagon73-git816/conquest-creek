@@ -332,28 +332,14 @@ const App = () => {
     if (player.teamId !== null) {
       return { allowed: false, reason: 'Player already on another team' };
     }
-    
+
     const ratings = calculateTeamRatings(teamId);
-    const playerRating = getEffectiveRating(player);
-    
-    if (player.gender === 'M') {
-      if (ratings.menCount >= 6) {
-        return { allowed: false, reason: 'Team already has 6 men' };
-      }
-      const newRating = ratings.menRating + playerRating;
-      if (newRating > 21.0) {
-        return { allowed: false, reason: 'Would exceed men limit (' + newRating.toFixed(1) + '/21.0)' };
-      }
-    } else {
-      if (ratings.womenCount >= 2) {
-        return { allowed: false, reason: 'Team already has 2 women' };
-      }
-      const newRating = ratings.womenRating + playerRating;
-      if (newRating > 7.0) {
-        return { allowed: false, reason: 'Would exceed women limit (' + newRating.toFixed(1) + '/7.0)' };
-      }
+    const totalPlayers = ratings.menCount + ratings.womenCount;
+
+    if (totalPlayers >= 9) {
+      return { allowed: false, reason: 'Team already has 9 players (maximum roster size)' };
     }
-    
+
     return { allowed: true };
   };
 
@@ -405,7 +391,7 @@ const App = () => {
       if (count < 4) totalBonus -= 4;
     });
 
-    // Full Roster Participation Bonus: +1 per month if all 8 team members play
+    // Full Roster Participation Bonus: +1 per month if all 9 team members play
     tournamentMonths.forEach(monthKey => {
       const monthMatches = matchesByMonth[monthKey] || [];
       if (monthMatches.length > 0) {
@@ -416,7 +402,7 @@ const App = () => {
         });
 
         const teamPlayers = players.filter(p => p.teamId === teamId && p.status === 'active');
-        if (teamPlayers.length === 8 && uniquePlayers.size === 8) {
+        if (teamPlayers.length === 9 && uniquePlayers.size === 9) {
           totalBonus += 1;
         }
       }
@@ -632,6 +618,8 @@ const App = () => {
               players={players}
               setPlayers={setPlayers}
               teams={teams}
+              captains={captains}
+              setCaptains={setCaptains}
               isAuthenticated={isAuthenticated}
               getEffectiveRating={getEffectiveRating}
               canAddPlayerToTeam={canAddPlayerToTeam}
@@ -645,6 +633,7 @@ const App = () => {
               setCaptains={setCaptains}
               teams={teams}
               setTeams={setTeams}
+              players={players}
               isAuthenticated={isAuthenticated}
               addLog={addLog}
             />

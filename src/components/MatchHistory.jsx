@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { TrendingUp, Edit, Trash2, ChevronDown, ChevronUp, Filter } from 'lucide-react';
+import { formatNTRP, formatDynamic } from '../utils/formatters';
 
 const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTab, players, userRole, userTeamId, setEditingMatch }) => {
   const [showFilters, setShowFilters] = useState(false);
@@ -251,7 +252,7 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
                             <span className="text-sm">
                               {player.lastName}, {player.firstName}
                               <span className="text-xs text-gray-500 ml-1">
-                                ({player.gender} {player.dynamicRating || player.ntrpRating})
+                                ({player.gender} {player.dynamicRating ? formatDynamic(player.dynamicRating) : formatNTRP(player.ntrpRating)})
                               </span>
                             </span>
                           </label>

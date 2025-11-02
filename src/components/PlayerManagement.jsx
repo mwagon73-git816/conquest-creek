@@ -1,12 +1,15 @@
 import React, { useState } from 'react';
-import { UserPlus, Plus, Edit, Trash2, Check, X, Upload, AlertTriangle } from 'lucide-react';
+import { UserPlus, Plus, Edit, Trash2, Check, X, Upload, AlertTriangle, ChevronUp, ChevronDown } from 'lucide-react';
 import Papa from 'papaparse';
 import { ACTION_TYPES } from '../services/activityLogger';
+import { formatNTRP, formatDynamic } from '../utils/formatters';
 
 const PlayerManagement = ({
   players,
   setPlayers,
   teams,
+  captains,
+  setCaptains,
   isAuthenticated,
   getEffectiveRating,
   canAddPlayerToTeam,
@@ -22,7 +25,12 @@ const PlayerManagement = ({
     dynamicRating: '',
     email: '',
     phone: '',
-    status: 'active'
+    status: 'active',
+    isCaptain: false,
+    captainUsername: '',
+    captainPassword: '',
+    captainEmail: '',
+    captainPhone: ''
   });
   const [showImportForm, setShowImportForm] = useState(false);
   const [csvFile, setCsvFile] = useState(null);
@@ -30,11 +38,138 @@ const PlayerManagement = ({
   const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [showFinalConfirm, setShowFinalConfirm] = useState(false);
+  const [sortColumn, setSortColumn] = useState('firstName');
+  const [sortDirection, setSortDirection] = useState('asc');
+
+  const validateEmail = (email) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  const handleSort = (column) => {
+    if (sortColumn === column) {
+      // Cycle through: asc -> desc -> null (unsorted)
+      if (sortDirection === 'asc') {
+        setSortDirection('desc');
+      } else if (sortDirection === 'desc') {
+        setSortColumn(null);
+        setSortDirection('asc');
+      }
+    } else {
+      setSortColumn(column);
+      setSortDirection('asc');
+    }
+  };
+
+  const getSortedPlayers = () => {
+    if (!sortColumn) {
+      return players; // Return unsorted
+    }
+
+    const sorted = [...players].sort((a, b) => {
+      let aVal, bVal;
+
+      switch (sortColumn) {
+        case 'firstName':
+          aVal = a.firstName.toLowerCase();
+          bVal = b.firstName.toLowerCase();
+          break;
+        case 'lastName':
+          aVal = a.lastName.toLowerCase();
+          bVal = b.lastName.toLowerCase();
+          break;
+        case 'gender':
+          aVal = a.gender;
+          bVal = b.gender;
+          break;
+        case 'ntrp':
+          aVal = a.ntrpRating;
+          bVal = b.ntrpRating;
+          break;
+        case 'dynamic':
+          // Handle null dynamic ratings - sort to end
+          if (!a.dynamicRating && !b.dynamicRating) return 0;
+          if (!a.dynamicRating) return 1;
+          if (!b.dynamicRating) return -1;
+          aVal = a.dynamicRating;
+          bVal = b.dynamicRating;
+          break;
+        default:
+          return 0;
+      }
+
+      if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+
+    return sorted;
+  };
+
+  const SortableHeader = ({ column, children, align = 'left' }) => {
+    const isActive = sortColumn === column;
+    const alignClass = align === 'center' ? 'text-center' : 'text-left';
+
+    return (
+      <th
+        className={`p-2 ${alignClass} cursor-pointer hover:bg-gray-100 select-none ${isActive ? 'bg-blue-50' : ''}`}
+        onClick={() => handleSort(column)}
+        title={`Click to sort by ${children}`}
+      >
+        <div className={`flex items-center gap-1 ${align === 'center' ? 'justify-center' : 'justify-start'}`}>
+          <span className={isActive ? 'font-bold' : ''}>{children}</span>
+          {isActive && (
+            sortDirection === 'asc' ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />
+          )}
+        </div>
+      </th>
+    );
+  };
 
   const handleSavePlayer = () => {
     if (!playerFormData.firstName || !playerFormData.lastName) {
       alert('First name and last name are required');
       return;
+    }
+
+    // Captain validation
+    if (playerFormData.isCaptain) {
+      if (!playerFormData.captainUsername.trim()) {
+        alert('Captain username is required when making player a captain');
+        return;
+      }
+      if (!playerFormData.captainPassword.trim()) {
+        alert('Captain password is required when making player a captain');
+        return;
+      }
+      if (!playerFormData.captainEmail.trim()) {
+        alert('Captain email is required when making player a captain');
+        return;
+      }
+      if (!validateEmail(playerFormData.captainEmail)) {
+        alert('Please enter a valid captain email address');
+        return;
+      }
+
+      // Check for duplicate username (except when editing same captain)
+      const existingCaptain = captains.find(c =>
+        c.username === playerFormData.captainUsername &&
+        (!editingPlayer || c.playerId !== editingPlayer.id)
+      );
+      if (existingCaptain) {
+        alert('Captain username already exists. Please choose a different username.');
+        return;
+      }
+
+      // Check for duplicate email
+      const duplicateEmail = captains.find(c =>
+        c.email === playerFormData.captainEmail &&
+        (!editingPlayer || c.playerId !== editingPlayer.id)
+      );
+      if (duplicateEmail) {
+        alert('Captain email already exists. Please use a different email.');
+        return;
+      }
     }
 
     const playerData = {
@@ -45,20 +180,87 @@ const PlayerManagement = ({
       dynamicRating: playerFormData.dynamicRating ? parseFloat(playerFormData.dynamicRating) : null,
       email: playerFormData.email.trim(),
       phone: playerFormData.phone.trim(),
-      status: playerFormData.status
+      status: playerFormData.status,
+      isCaptain: playerFormData.isCaptain || false,
+      captainUsername: playerFormData.captainUsername.trim(),
+      captainPassword: playerFormData.captainPassword.trim(),
+      captainEmail: playerFormData.captainEmail.trim(),
+      captainPhone: playerFormData.captainPhone.trim()
     };
 
     const playerName = `${playerData.firstName} ${playerData.lastName}`;
 
     if (editingPlayer) {
       const before = { ...editingPlayer };
-      const after = { ...editingPlayer, ...playerData };
+      const wasCaptain = editingPlayer.isCaptain;
+      const isCaptainNow = playerFormData.isCaptain;
+
+      const updatedPlayer = {...editingPlayer, ...playerData};
+      const after = updatedPlayer;
 
       setPlayers(players.map(p =>
-        p.id === editingPlayer.id
-          ? {...p, ...playerData}
-          : p
+        p.id === editingPlayer.id ? updatedPlayer : p
       ));
+
+      // Handle captain synchronization
+      if (isCaptainNow && !wasCaptain) {
+        // Player is being promoted to captain
+        const teamId = editingPlayer.teamId;
+
+        // Check if team already has a captain
+        if (teamId) {
+          const existingTeamCaptain = captains.find(c => c.teamId === teamId && c.status === 'active');
+          if (existingTeamCaptain) {
+            const team = teams.find(t => t.id === teamId);
+            if (!confirm(`Team "${team?.name}" already has a captain. Assigning this captain will unassign the current captain. Continue?`)) {
+              return;
+            }
+            // Unassign existing captain
+            setCaptains(captains.map(c =>
+              c.id === existingTeamCaptain.id ? {...c, teamId: null} : c
+            ));
+          }
+        }
+
+        const newCaptain = {
+          id: Date.now(),
+          username: playerData.captainUsername,
+          password: playerData.captainPassword,
+          name: playerName,
+          email: playerData.captainEmail,
+          phone: playerData.captainPhone,
+          teamId: teamId,
+          status: 'active',
+          playerId: editingPlayer.id
+        };
+        setCaptains([...captains, newCaptain]);
+
+        alert(`Player promoted to captain!\nUsername: ${playerData.captainUsername}\nPassword: ${playerData.captainPassword}`);
+      } else if (!isCaptainNow && wasCaptain) {
+        // Player captain status is being removed
+        const linkedCaptain = captains.find(c => c.playerId === editingPlayer.id);
+        if (linkedCaptain) {
+          setCaptains(captains.filter(c => c.id !== linkedCaptain.id));
+        }
+      } else if (isCaptainNow && wasCaptain) {
+        // Update existing captain
+        const linkedCaptain = captains.find(c => c.playerId === editingPlayer.id);
+        if (linkedCaptain) {
+          setCaptains(captains.map(c =>
+            c.id === linkedCaptain.id
+              ? {
+                  ...c,
+                  username: playerData.captainUsername,
+                  password: playerData.captainPassword,
+                  name: playerName,
+                  email: playerData.captainEmail,
+                  phone: playerData.captainPhone,
+                  teamId: updatedPlayer.teamId
+                }
+              : c
+          ));
+        }
+      }
 
       // Log the edit
       addLog(
@@ -77,6 +279,24 @@ const PlayerManagement = ({
 
       setPlayers([...players, newPlayer]);
 
+      // If player is a captain, create captain record
+      if (playerFormData.isCaptain) {
+        const newCaptain = {
+          id: Date.now() + 1,
+          username: playerData.captainUsername,
+          password: playerData.captainPassword,
+          name: playerName,
+          email: playerData.captainEmail,
+          phone: playerData.captainPhone,
+          teamId: null,
+          status: 'active',
+          playerId: newPlayer.id
+        };
+        setCaptains([...captains, newCaptain]);
+
+        alert(`Player added and promoted to captain!\nUsername: ${playerData.captainUsername}\nPassword: ${playerData.captainPassword}`);
+      }
+
       // Log the add
       addLog(
         ACTION_TYPES.PLAYER_ADDED,
@@ -91,6 +311,11 @@ const PlayerManagement = ({
     setEditingPlayer(null);
   };
 
+  const generateSuggestedUsername = (firstName, lastName) => {
+    if (!firstName || !lastName) return '';
+    return (firstName[0] + lastName).toLowerCase();
+  };
+
   const handleAddNewPlayer = () => {
     setShowPlayerForm(true);
     setEditingPlayer(null);
@@ -102,12 +327,21 @@ const PlayerManagement = ({
       dynamicRating: '',
       email: '',
       phone: '',
-      status: 'active'
+      status: 'active',
+      isCaptain: false,
+      captainUsername: '',
+      captainPassword: '',
+      captainEmail: '',
+      captainPhone: ''
     });
   };
 
   const handleEditPlayer = (player) => {
     setEditingPlayer(player);
+
+    // Load captain data if player is a captain
+    const linkedCaptain = captains.find(c => c.playerId === player.id);
+
     setPlayerFormData({
       firstName: player.firstName,
       lastName: player.lastName,
@@ -116,15 +350,32 @@ const PlayerManagement = ({
       dynamicRating: player.dynamicRating || '',
       email: player.email || '',
       phone: player.phone || '',
-      status: player.status
+      status: player.status,
+      isCaptain: player.isCaptain || false,
+      captainUsername: player.captainUsername || linkedCaptain?.username || '',
+      captainPassword: player.captainPassword || linkedCaptain?.password || '',
+      captainEmail: player.captainEmail || linkedCaptain?.email || '',
+      captainPhone: player.captainPhone || linkedCaptain?.phone || ''
     });
     setShowPlayerForm(true);
   };
 
   const handleDeletePlayer = (playerId) => {
     const player = players.find(p => p.id === playerId);
-    if (confirm('Delete this player?')) {
+    const linkedCaptain = captains.find(c => c.playerId === playerId);
+
+    let confirmMessage = 'Delete this player?';
+    if (linkedCaptain) {
+      confirmMessage = 'This player is also a captain. Deleting will remove their captain login access. Continue?';
+    }
+
+    if (confirm(confirmMessage)) {
       setPlayers(players.filter(p => p.id !== playerId));
+
+      // Delete linked captain if exists
+      if (linkedCaptain) {
+        setCaptains(captains.filter(c => c.id !== linkedCaptain.id));
+      }
 
       // Log the deletion
       if (player) {
@@ -148,6 +399,14 @@ const PlayerManagement = ({
 
       setPlayers(players.map(p => p.id === player.id ? {...p, teamId} : p));
 
+      // If player is a captain, sync their captain record
+      const linkedCaptain = captains.find(c => c.playerId === player.id);
+      if (linkedCaptain) {
+        setCaptains(captains.map(c =>
+          c.id === linkedCaptain.id ? {...c, teamId} : c
+        ));
+      }
+
       // Log the team assignment
       addLog(
         ACTION_TYPES.TEAM_PLAYER_ADDED,
@@ -165,50 +424,130 @@ const PlayerManagement = ({
     const errors = [];
     const validRatings = [2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5];
 
-    // Normalize headers (case-insensitive)
-    const normalizedRow = {};
-    Object.keys(row).forEach(key => {
-      normalizedRow[key.toLowerCase().trim()] = row[key];
-    });
+    // Note: Headers are already normalized by Papa.parse transformHeader
+    // row keys are already lowercase and trimmed
+    const normalizedRow = row;
+
+    const firstName = normalizedRow.firstname?.toString().trim() || '';
+    const lastName = normalizedRow.lastname?.toString().trim() || '';
 
     // Required fields
-    if (!normalizedRow.firstname?.trim()) {
+    if (!firstName) {
       errors.push('Missing first name');
     }
-    if (!normalizedRow.lastname?.trim()) {
+    if (!lastName) {
       errors.push('Missing last name');
     }
 
+    // Check if player already exists (match by first + last name, case-insensitive)
+    const existingPlayer = players.find(p =>
+      p.firstName.toLowerCase().trim() === firstName.toLowerCase() &&
+      p.lastName.toLowerCase().trim() === lastName.toLowerCase()
+    );
+
     // Gender validation
-    const gender = (normalizedRow.gender || 'M').toUpperCase().trim();
+    let gender = 'M'; // Default for new players only
+    if (normalizedRow.gender !== undefined && normalizedRow.gender !== null && normalizedRow.gender !== '') {
+      gender = normalizedRow.gender.toString().toUpperCase().trim();
+    } else if (existingPlayer) {
+      gender = existingPlayer.gender; // Keep existing for updates
+    }
     if (gender !== 'M' && gender !== 'F') {
       errors.push('Gender must be M or F');
     }
 
-    // NTRP validation
-    const ntrp = parseFloat(normalizedRow.ntrp || '3.5');
+    // NTRP validation - try multiple column name variations
+    let ntrp = null;
+    if (normalizedRow.ntrp !== undefined && normalizedRow.ntrp !== null && normalizedRow.ntrp !== '') {
+      ntrp = typeof normalizedRow.ntrp === 'number' ? normalizedRow.ntrp : parseFloat(normalizedRow.ntrp);
+    } else if (normalizedRow.ntrprating !== undefined && normalizedRow.ntrprating !== null && normalizedRow.ntrprating !== '') {
+      ntrp = typeof normalizedRow.ntrprating === 'number' ? normalizedRow.ntrprating : parseFloat(normalizedRow.ntrprating);
+    } else if (normalizedRow['ntrp rating'] !== undefined && normalizedRow['ntrp rating'] !== null && normalizedRow['ntrp rating'] !== '') {
+      ntrp = typeof normalizedRow['ntrp rating'] === 'number' ? normalizedRow['ntrp rating'] : parseFloat(normalizedRow['ntrp rating']);
+    }
+
+    // If no NTRP in CSV, use existing player's value or default to 3.5
+    if (ntrp === null || isNaN(ntrp)) {
+      if (existingPlayer) {
+        ntrp = existingPlayer.ntrpRating; // Keep existing for updates
+      } else {
+        ntrp = 3.5; // Default only for new players
+      }
+    }
+
+    console.log(`Row ${index + 1}: ${firstName} ${lastName} - NTRP from CSV = ${ntrp}`);
+
     if (!validRatings.includes(ntrp)) {
-      errors.push('NTRP must be 2.5-5.5');
+      errors.push(`NTRP must be 2.5-5.5 (got ${ntrp})`);
+    }
+
+    // Dynamic rating - try multiple column name variations
+    let dynamicRating = null;
+    if (normalizedRow.dynamic !== undefined && normalizedRow.dynamic !== null && normalizedRow.dynamic !== '') {
+      dynamicRating = typeof normalizedRow.dynamic === 'number' ? normalizedRow.dynamic : parseFloat(normalizedRow.dynamic);
+    } else if (normalizedRow.dynamicrating !== undefined && normalizedRow.dynamicrating !== null && normalizedRow.dynamicrating !== '') {
+      dynamicRating = typeof normalizedRow.dynamicrating === 'number' ? normalizedRow.dynamicrating : parseFloat(normalizedRow.dynamicrating);
+    } else if (normalizedRow['dynamic rating'] !== undefined && normalizedRow['dynamic rating'] !== null && normalizedRow['dynamic rating'] !== '') {
+      dynamicRating = typeof normalizedRow['dynamic rating'] === 'number' ? normalizedRow['dynamic rating'] : parseFloat(normalizedRow['dynamic rating']);
+    }
+
+    if (isNaN(dynamicRating)) {
+      dynamicRating = null;
     }
 
     // Status validation
-    const status = (normalizedRow.status || 'active').toLowerCase().trim();
+    let status = 'active'; // Default for new players
+    if (normalizedRow.status !== undefined && normalizedRow.status !== null && normalizedRow.status !== '') {
+      status = normalizedRow.status.toString().toLowerCase().trim();
+    } else if (existingPlayer) {
+      status = existingPlayer.status; // Keep existing for updates
+    }
     if (!['active', 'injured', 'inactive'].includes(status)) {
       errors.push('Status must be active, injured, or inactive');
     }
 
+    const action = existingPlayer ? 'update' : 'add';
+    const changes = [];
+
+    // Track what will change for existing players
+    if (existingPlayer) {
+      if (existingPlayer.ntrpRating !== ntrp) {
+        changes.push(`NTRP: ${formatNTRP(existingPlayer.ntrpRating)} → ${formatNTRP(ntrp)}`);
+      }
+      if (existingPlayer.dynamicRating !== dynamicRating) {
+        changes.push(`Dynamic: ${formatDynamic(existingPlayer.dynamicRating)} → ${formatDynamic(dynamicRating)}`);
+      }
+      if (existingPlayer.gender !== gender) {
+        changes.push(`Gender: ${existingPlayer.gender} → ${gender}`);
+      }
+      const newEmail = normalizedRow.email?.toString().trim() || '';
+      if (newEmail && existingPlayer.email !== newEmail) {
+        changes.push(`Email updated`);
+      }
+      const newPhone = normalizedRow.phone?.toString().trim() || '';
+      if (newPhone && existingPlayer.phone !== newPhone) {
+        changes.push(`Phone updated`);
+      }
+      if (existingPlayer.status !== status) {
+        changes.push(`Status: ${existingPlayer.status} → ${status}`);
+      }
+    }
+
     return {
       rowIndex: index,
-      firstName: normalizedRow.firstname?.trim() || '',
-      lastName: normalizedRow.lastname?.trim() || '',
+      firstName: firstName,
+      lastName: lastName,
       gender: gender,
       ntrpRating: ntrp,
-      dynamicRating: normalizedRow.dynamicrating ? parseFloat(normalizedRow.dynamicrating) : null,
-      email: normalizedRow.email?.trim() || '',
-      phone: normalizedRow.phone?.trim() || '',
+      dynamicRating: dynamicRating,
+      email: normalizedRow.email?.toString().trim() || '',
+      phone: normalizedRow.phone?.toString().trim() || '',
       status: status,
       errors: errors,
-      isValid: errors.length === 0
+      isValid: errors.length === 0,
+      action: action,
+      existingPlayerId: existingPlayer?.id || null,
+      changes: changes
     };
   };
 
@@ -222,7 +561,13 @@ const PlayerManagement = ({
       header: true,
       skipEmptyLines: true,
       trimHeaders: true,
+      dynamicTyping: true, // Automatically convert numeric strings to numbers
+      transformHeader: (header) => {
+        // Normalize headers: trim whitespace and lowercase
+        return header.trim().toLowerCase();
+      },
       complete: (results) => {
+        console.log('CSV Parsed:', results.data);
         const validated = results.data.map((row, index) => validatePlayer(row, index));
         setParsedPlayers(validated);
       },
@@ -241,22 +586,67 @@ const PlayerManagement = ({
       return;
     }
 
-    const newPlayers = validPlayers.map((p, index) => ({
-      id: Date.now() + index,
-      teamId: null,
-      firstName: p.firstName,
-      lastName: p.lastName,
-      gender: p.gender,
-      ntrpRating: p.ntrpRating,
-      dynamicRating: p.dynamicRating,
-      email: p.email,
-      phone: p.phone,
-      status: p.status
-    }));
+    const playersToUpdate = validPlayers.filter(p => p.action === 'update');
+    const playersToAdd = validPlayers.filter(p => p.action === 'add');
 
-    setPlayers([...players, ...newPlayers]);
+    console.log('=== Import Summary ===');
+    console.log(`Players to update: ${playersToUpdate.length}`);
+    console.log(`Players to add: ${playersToAdd.length}`);
 
-    alert(`Successfully imported ${validPlayers.length} player(s)`);
+    // Confirmation message
+    const confirmMsg = `Import Summary:\n\n` +
+      `${playersToUpdate.length} player(s) will be UPDATED\n` +
+      `${playersToAdd.length} player(s) will be ADDED\n\n` +
+      `Continue with import?`;
+
+    if (!confirm(confirmMsg)) {
+      return;
+    }
+
+    // Update existing players
+    const updatedPlayers = players.map(existingPlayer => {
+      const importData = playersToUpdate.find(p => p.existingPlayerId === existingPlayer.id);
+      if (importData) {
+        console.log(`Updating ${importData.firstName} ${importData.lastName}: NTRP ${existingPlayer.ntrpRating} → ${importData.ntrpRating}`);
+        return {
+          ...existingPlayer,
+          gender: importData.gender,
+          ntrpRating: importData.ntrpRating,
+          dynamicRating: importData.dynamicRating,
+          email: importData.email || existingPlayer.email,
+          phone: importData.phone || existingPlayer.phone,
+          status: importData.status
+        };
+      }
+      return existingPlayer;
+    });
+
+    // Add new players
+    const newPlayers = playersToAdd.map((p, index) => {
+      console.log(`Adding ${p.firstName} ${p.lastName}: NTRP ${p.ntrpRating}`);
+      return {
+        id: Date.now() + index,
+        teamId: null,
+        firstName: p.firstName,
+        lastName: p.lastName,
+        gender: p.gender,
+        ntrpRating: p.ntrpRating,
+        dynamicRating: p.dynamicRating,
+        email: p.email,
+        phone: p.phone,
+        status: p.status,
+        isCaptain: false,
+        captainUsername: '',
+        captainPassword: '',
+        captainEmail: '',
+        captainPhone: ''
+      };
+    });
+
+    setPlayers([...updatedPlayers, ...newPlayers]);
+
+    console.log('=== Import Complete ===');
+    alert(`Import complete:\n\n${playersToUpdate.length} player(s) updated\n${playersToAdd.length} player(s) added`);
 
     // Reset import form
     setShowImportForm(false);
@@ -437,6 +827,96 @@ const PlayerManagement = ({
                 placeholder="555-123-4567"
               />
             </div>
+
+            {/* Captain Promotion Section */}
+            <div className="col-span-2 border-t pt-4 mt-2">
+              <div className="flex items-center gap-2 mb-3">
+                <input
+                  type="checkbox"
+                  id="isCaptain"
+                  checked={playerFormData.isCaptain}
+                  onChange={(e) => {
+                    const isCaptain = e.target.checked;
+                    const suggestedUsername = isCaptain && !playerFormData.captainUsername
+                      ? generateSuggestedUsername(playerFormData.firstName, playerFormData.lastName)
+                      : playerFormData.captainUsername;
+                    setPlayerFormData({
+                      ...playerFormData,
+                      isCaptain,
+                      captainUsername: suggestedUsername
+                    });
+                  }}
+                  className="w-4 h-4"
+                />
+                <label htmlFor="isCaptain" className="text-sm font-bold text-purple-900">
+                  ⭐ Make this player a team captain
+                </label>
+              </div>
+
+              {playerFormData.isCaptain && (
+                <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                  <p className="text-xs text-purple-800 mb-3">
+                    This player will receive captain login credentials and can enter matches for their team.
+                  </p>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-semibold mb-1">
+                        Captain Username *
+                      </label>
+                      <input
+                        type="text"
+                        value={playerFormData.captainUsername}
+                        onChange={(e) => setPlayerFormData({...playerFormData, captainUsername: e.target.value})}
+                        className="w-full px-3 py-2 border rounded"
+                        placeholder="e.g., jsmith"
+                      />
+                      <p className="text-xs text-gray-600 mt-1">
+                        Used for captain login
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold mb-1">
+                        Captain Password *
+                      </label>
+                      <input
+                        type="password"
+                        value={playerFormData.captainPassword}
+                        onChange={(e) => setPlayerFormData({...playerFormData, captainPassword: e.target.value})}
+                        className="w-full px-3 py-2 border rounded"
+                        placeholder="Create password"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold mb-1">
+                        Captain Email *
+                      </label>
+                      <input
+                        type="email"
+                        value={playerFormData.captainEmail}
+                        onChange={(e) => setPlayerFormData({...playerFormData, captainEmail: e.target.value})}
+                        className="w-full px-3 py-2 border rounded"
+                        placeholder="captain@example.com"
+                      />
+                      <p className="text-xs text-gray-600 mt-1">
+                        For match notifications
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold mb-1">
+                        Captain Phone (Optional)
+                      </label>
+                      <input
+                        type="tel"
+                        value={playerFormData.captainPhone}
+                        onChange={(e) => setPlayerFormData({...playerFormData, captainPhone: e.target.value})}
+                        className="w-full px-3 py-2 border rounded"
+                        placeholder="555-123-4567"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
           <div className="flex gap-2 mt-4">
             <button
@@ -494,54 +974,94 @@ const PlayerManagement = ({
           {parsedPlayers.length > 0 && (
             <div className="mb-4">
               <h4 className="font-semibold mb-2">Preview ({parsedPlayers.length} rows)</h4>
+              <div className="mb-3 flex gap-4 text-sm">
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 bg-blue-100 border border-blue-300 rounded"></div>
+                  <span>Will Update: {parsedPlayers.filter(p => p.action === 'update' && p.isValid).length}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 bg-green-100 border border-green-300 rounded"></div>
+                  <span>Will Add: {parsedPlayers.filter(p => p.action === 'add' && p.isValid).length}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 bg-red-100 border border-red-300 rounded"></div>
+                  <span>Invalid: {parsedPlayers.filter(p => !p.isValid).length}</span>
+                </div>
+              </div>
               <div className="overflow-x-auto max-h-96 border rounded">
                 <table className="w-full text-sm">
-                  <thead className="bg-blue-100 sticky top-0">
+                  <thead className="bg-gray-100 sticky top-0">
                     <tr>
                       <th className="p-2 text-left">Row</th>
+                      <th className="p-2 text-left">Action</th>
                       <th className="p-2 text-left">First Name</th>
                       <th className="p-2 text-left">Last Name</th>
                       <th className="p-2 text-center">Gender</th>
                       <th className="p-2 text-center">NTRP</th>
                       <th className="p-2 text-center">Dynamic</th>
-                      <th className="p-2 text-left">Email</th>
-                      <th className="p-2 text-center">Status</th>
-                      <th className="p-2 text-left">Validation</th>
+                      <th className="p-2 text-left">Changes</th>
+                      <th className="p-2 text-left">Status</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {parsedPlayers.map((player, idx) => (
-                      <tr
-                        key={idx}
-                        className={`border-b ${player.isValid ? 'bg-white' : 'bg-red-50'}`}
-                      >
-                        <td className="p-2">{idx + 1}</td>
-                        <td className="p-2">{player.firstName}</td>
-                        <td className="p-2">{player.lastName}</td>
-                        <td className="p-2 text-center">{player.gender}</td>
-                        <td className="p-2 text-center">{player.ntrpRating}</td>
-                        <td className="p-2 text-center">{player.dynamicRating || '-'}</td>
-                        <td className="p-2">{player.email || '-'}</td>
-                        <td className="p-2 text-center">
-                          <span className={`px-2 py-1 rounded text-xs ${
-                            player.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                          }`}>
-                            {player.status}
-                          </span>
-                        </td>
-                        <td className="p-2">
-                          {player.isValid ? (
-                            <span className="text-green-600 text-xs flex items-center gap-1">
-                              <Check className="w-3 h-3" /> Valid
+                    {parsedPlayers.map((player, idx) => {
+                      let rowColor = 'bg-white';
+                      if (!player.isValid) {
+                        rowColor = 'bg-red-50';
+                      } else if (player.action === 'update') {
+                        rowColor = 'bg-blue-50';
+                      } else if (player.action === 'add') {
+                        rowColor = 'bg-green-50';
+                      }
+
+                      return (
+                        <tr key={idx} className={`border-b ${rowColor}`}>
+                          <td className="p-2">{idx + 1}</td>
+                          <td className="p-2">
+                            <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                              player.action === 'update' ? 'bg-blue-200 text-blue-800' :
+                              player.action === 'add' ? 'bg-green-200 text-green-800' : ''
+                            }`}>
+                              {player.action === 'update' ? 'UPDATE' : 'ADD'}
                             </span>
-                          ) : (
-                            <span className="text-red-600 text-xs">
-                              {player.errors.join(', ')}
+                          </td>
+                          <td className="p-2">{player.firstName}</td>
+                          <td className="p-2">{player.lastName}</td>
+                          <td className="p-2 text-center">{player.gender}</td>
+                          <td className="p-2 text-center">{formatNTRP(player.ntrpRating)}</td>
+                          <td className="p-2 text-center">{formatDynamic(player.dynamicRating)}</td>
+                          <td className="p-2">
+                            {player.isValid ? (
+                              player.action === 'update' && player.changes.length > 0 ? (
+                                <div className="text-xs text-gray-700">
+                                  {player.changes.slice(0, 2).map((change, i) => (
+                                    <div key={i}>{change}</div>
+                                  ))}
+                                  {player.changes.length > 2 && (
+                                    <div className="text-gray-500">+{player.changes.length - 2} more</div>
+                                  )}
+                                </div>
+                              ) : player.action === 'update' ? (
+                                <span className="text-xs text-gray-500 italic">No changes</span>
+                              ) : (
+                                <span className="text-xs text-green-700">New player</span>
+                              )
+                            ) : (
+                              <span className="text-red-600 text-xs">
+                                {player.errors.join(', ')}
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-2">
+                            <span className={`px-2 py-1 rounded text-xs ${
+                              player.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                            }`}>
+                              {player.status}
                             </span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -581,32 +1101,38 @@ const PlayerManagement = ({
         <table className="w-full">
           <thead>
             <tr className="border-b-2">
-              <th className="text-left p-2">Name</th>
-              <th className="text-center p-2">Gender</th>
-              <th className="text-center p-2">NTRP</th>
-              <th className="text-center p-2">Dynamic</th>
-              <th className="text-center p-2">Effective</th>
+              <SortableHeader column="firstName" align="left">Name</SortableHeader>
+              <SortableHeader column="gender" align="center">Gender</SortableHeader>
+              <SortableHeader column="ntrp" align="center">NTRP</SortableHeader>
+              <SortableHeader column="dynamic" align="center">Dynamic</SortableHeader>
+              <th className="text-center p-2">Captain</th>
               <th className="text-center p-2">Team</th>
               <th className="text-center p-2">Status</th>
               {isAuthenticated && <th className="text-center p-2">Actions</th>}
             </tr>
           </thead>
           <tbody>
-            {players.map(player => {
+            {getSortedPlayers().map(player => {
               const team = teams.find(t => t.id === player.teamId);
-              const effectiveRating = getEffectiveRating(player);
+              const isCaptain = player.isCaptain || captains.some(c => c.playerId === player.id);
               return (
                 <tr key={player.id} className="border-b hover:bg-gray-50">
                   <td className="p-2">{player.firstName} {player.lastName}</td>
                   <td className="text-center p-2">{player.gender}</td>
-                  <td className="text-center p-2">{player.ntrpRating}</td>
+                  <td className="text-center p-2">{formatNTRP(player.ntrpRating)}</td>
                   <td className="text-center p-2">
                     {player.dynamicRating ? (
-                      <span className="font-semibold text-blue-600">{player.dynamicRating}</span>
-                    ) : '-'}
+                      <span className="font-semibold text-blue-600">{formatDynamic(player.dynamicRating)}</span>
+                    ) : (
+                      <span className="text-gray-400">-</span>
+                    )}
                   </td>
                   <td className="text-center p-2">
-                    <span className="font-bold">{effectiveRating}</span>
+                    {isCaptain ? (
+                      <span className="text-purple-600 font-semibold" title="Team Captain">⭐</span>
+                    ) : (
+                      <span className="text-gray-300">-</span>
+                    )}
                   </td>
                   <td className="text-center p-2">
                     {isAuthenticated && !team ? (
@@ -635,15 +1161,15 @@ const PlayerManagement = ({
                   {isAuthenticated && (
                     <td className="text-center p-2">
                       <div className="flex justify-center gap-2">
-                        <button 
+                        <button
                           onClick={() => handleEditPlayer(player)}
                           className="text-blue-600 hover:text-blue-800 p-1"
                           title="Edit player"
                         >
                           <Edit className="w-4 h-4" />
                         </button>
-                        <button 
-                          onClick={() => handleDeletePlayer(player.id)} 
+                        <button
+                          onClick={() => handleDeletePlayer(player.id)}
                           className="text-red-600 hover:text-red-800 p-1"
                           title="Delete player"
                         >

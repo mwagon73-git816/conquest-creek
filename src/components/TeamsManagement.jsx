@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Users, Plus, Trash2, X, Award, Edit, Check } from 'lucide-react';
 import { ACTION_TYPES } from '../services/activityLogger';
+import { formatNTRP, formatDynamic } from '../utils/formatters';
 
 const TeamsManagement = ({
   teams,
@@ -291,11 +292,14 @@ const TeamsManagement = ({
                 <option value="">No Captain</option>
                 {captains
                   .filter(c => c.status === 'active' && (c.teamId === null || c.teamId === editingTeam?.id))
-                  .map(captain => (
-                    <option key={captain.id} value={captain.id}>
-                      {captain.name}
-                    </option>
-                  ))
+                  .map(captain => {
+                    const linkedPlayer = players.find(p => p.id === captain.playerId);
+                    return (
+                      <option key={captain.id} value={captain.id}>
+                        {captain.name} ({captain.username}){linkedPlayer ? ' - Player' : ''}
+                      </option>
+                    );
+                  })
                 }
               </select>
               <p className="text-xs text-gray-600 mt-1">
@@ -430,7 +434,10 @@ const TeamsManagement = ({
           const bonuses = team.bonuses || { uniformType: 'none', uniformPhotoSubmitted: false, practices: {} };
           const uniformBonus = getUniformBonus(bonuses.uniformType, bonuses.uniformPhotoSubmitted);
           const practiceBonus = getPracticeBonus(bonuses.practices);
-          
+
+          // Find captain assigned to this team (search by both team.captainId and captain.teamId)
+          const assignedCaptain = captains.find(c => c.id === team.captainId || c.teamId === team.id);
+
           return (
             <div key={team.id} className="border rounded p-4">
               <div className="flex justify-between items-start mb-3">
@@ -439,7 +446,13 @@ const TeamsManagement = ({
                   <div>
                     <div className="font-bold text-lg">{team.name}</div>
                     <div className="text-sm text-gray-600">
-                      Captain: {team.captainId ? (captains.find(c => c.id === team.captainId)?.name || 'Unknown') : 'No Captain'}
+                      Captain: {assignedCaptain ? (
+                        <span className="font-semibold text-purple-700">
+                          {assignedCaptain.name}{assignedCaptain.email ? ` (${assignedCaptain.email})` : ''}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400 italic">Not Assigned</span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -466,20 +479,20 @@ const TeamsManagement = ({
               <div className="grid grid-cols-4 gap-3 text-sm bg-gray-50 p-3 rounded mb-3">
                 <div>
                   <div className="text-gray-600">Players</div>
-                  <div className="font-bold">{teamPlayers.length}/8</div>
+                  <div className="font-bold">{teamPlayers.length}/9</div>
                 </div>
                 <div>
                   <div className="text-gray-600">Men</div>
-                  <div className="font-bold">{ratings.menCount}/6 ({ratings.menRating.toFixed(1)})</div>
+                  <div className="font-bold">{ratings.menCount} ({formatNTRP(ratings.menRating)})</div>
                 </div>
                 <div>
                   <div className="text-gray-600">Women</div>
-                  <div className="font-bold">{ratings.womenCount}/2 ({ratings.womenRating.toFixed(1)})</div>
+                  <div className="font-bold">{ratings.womenCount} ({formatNTRP(ratings.womenRating)})</div>
                 </div>
                 <div>
                   <div className="text-gray-600">Total Rating</div>
-                  <div className={`font-bold ${ratings.totalRating > 28.0 ? 'text-red-600' : 'text-green-600'}`}>
-                    {ratings.totalRating.toFixed(1)}/28.0
+                  <div className="font-bold text-gray-700">
+                    {formatNTRP(ratings.totalRating)}
                   </div>
                 </div>
               </div>
@@ -500,7 +513,7 @@ const TeamsManagement = ({
                   <div>
                     <span className="text-gray-600">Practice:</span>
                     <span className="ml-2 font-semibold text-purple-700">
-                      +{practiceBonus.toFixed(1)} pts
+                      +{formatNTRP(practiceBonus)} pts
                     </span>
                   </div>
                 </div>
@@ -510,9 +523,12 @@ const TeamsManagement = ({
                 <div className="mt-3">
                   <div className="text-xs font-semibold text-gray-600 mb-2">Roster:</div>
                   <div className="grid grid-cols-2 gap-2 text-sm">
-                    {teamPlayers.map(player => (
-                      <div key={player.id} className="text-gray-700 flex items-center justify-between">
-                        <span>{player.firstName} {player.lastName} ({player.gender} {getEffectiveRating(player)})</span>
+                    {teamPlayers.map(player => {
+                      const effectiveRating = getEffectiveRating(player);
+                      const displayRating = player.dynamicRating ? formatDynamic(effectiveRating) : formatNTRP(effectiveRating);
+                      return (
+                        <div key={player.id} className="text-gray-700 flex items-center justify-between">
+                          <span>{player.firstName} {player.lastName} ({player.gender} {displayRating})</span>
                         {isAuthenticated && (
                           <button 
                             onClick={() => handleRemovePlayer(player.id)}
@@ -521,8 +537,9 @@ const TeamsManagement = ({
                             <X className="w-3 h-3" />
                           </button>
                         )}
-                      </div>
-                    ))}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}

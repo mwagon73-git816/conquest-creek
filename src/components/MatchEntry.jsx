@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Calendar, Plus, Check, X, Upload, Image as ImageIcon } from 'lucide-react';
 import { ACTION_TYPES } from '../services/activityLogger';
+import { formatNTRP, formatDynamic } from '../utils/formatters';
 
 const MatchEntry = ({ teams, matches, setMatches, isAuthenticated, setActiveTab, players, captains, onAddPhoto, loginName, userRole, userTeamId, editingMatch, setEditingMatch, addLog }) => {
   const [showMatchForm, setShowMatchForm] = useState(false);
@@ -606,7 +607,7 @@ const MatchEntry = ({ teams, matches, setMatches, isAuthenticated, setActiveTab,
                         className="w-4 h-4"
                       />
                       <span className="text-sm">
-                        {player.firstName} {player.lastName} ({player.gender} {player.dynamicRating || player.ntrpRating})
+                        {player.firstName} {player.lastName} ({player.gender} {player.dynamicRating ? formatDynamic(player.dynamicRating) : formatNTRP(player.ntrpRating)})
                       </span>
                     </label>
                   ))}
@@ -630,7 +631,7 @@ const MatchEntry = ({ teams, matches, setMatches, isAuthenticated, setActiveTab,
                         className="w-4 h-4"
                       />
                       <span className="text-sm">
-                        {player.firstName} {player.lastName} ({player.gender} {player.dynamicRating || player.ntrpRating})
+                        {player.firstName} {player.lastName} ({player.gender} {player.dynamicRating ? formatDynamic(player.dynamicRating) : formatNTRP(player.ntrpRating)})
                       </span>
                     </label>
                   ))}

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Trophy, ChevronUp, ChevronDown } from 'lucide-react';
 import MatchPhotos from './MatchPhotos';
+import { formatNTRP } from '../utils/formatters';
 
 const Leaderboard = ({ teams, getLeaderboard, photos, isAuthenticated, onDeletePhoto }) => {
   const [sortColumn, setSortColumn] = useState('totalPoints');
@@ -168,12 +169,12 @@ const Leaderboard = ({ teams, getLeaderboard, photos, isAuthenticated, onDeleteP
                 <td className="text-center p-2">{team.matchWins}-{team.matchLosses}</td>
                 <td className="text-center p-2 font-semibold">{team.matchWinPoints}</td>
                 <td className="text-center p-2 text-sm">
-                  {team.cappedBonus.toFixed(1)}
+                  {formatNTRP(team.cappedBonus)}
                   {team.bonusPoints > team.cappedBonus && (
                     <span className="text-red-500 text-xs ml-1">(capped)</span>
                   )}
                 </td>
-                <td className="text-center p-2 font-bold text-lg text-blue-600">{team.totalPoints.toFixed(1)}</td>
+                <td className="text-center p-2 font-bold text-lg text-blue-600">{formatNTRP(team.totalPoints)}</td>
                 <td className="text-center p-2 text-sm text-gray-600">{team.setsWon}</td>
                 <td className="text-center p-2 text-sm text-gray-600">{team.gamesWon}</td>
               </tr>

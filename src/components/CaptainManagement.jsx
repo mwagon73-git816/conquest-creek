@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Users, Plus, Edit, Trash2, Check, X, Eye, EyeOff } from 'lucide-react';
 import { ACTION_TYPES } from '../services/activityLogger';
 
-const CaptainManagement = ({ captains, setCaptains, teams, setTeams, isAuthenticated, addLog }) => {
+const CaptainManagement = ({ captains, setCaptains, teams, setTeams, isAuthenticated, addLog, players }) => {
   const [showForm, setShowForm] = useState(false);
   const [editingCaptain, setEditingCaptain] = useState(null);
   const [formData, setFormData] = useState({
@@ -248,7 +248,16 @@ const CaptainManagement = ({ captains, setCaptains, teams, setTeams, isAuthentic
 
   const handleDelete = (captainId) => {
     const captain = captains.find(c => c.id === captainId);
-    if (confirm(`Delete captain "${captain?.name}"? This will remove their login access.`)) {
+    const linkedPlayer = players?.find(p => p.id === captain?.playerId);
+
+    let confirmMessage = `Delete captain "${captain?.name}"? This will remove their login access.`;
+    if (linkedPlayer) {
+      confirmMessage = `This captain is also a player (${linkedPlayer.firstName} ${linkedPlayer.lastName}). Please remove captain status from the player first using the Player Management tab.`;
+      alert(confirmMessage);
+      return;
+    }
+
+    if (confirm(confirmMessage)) {
       // Remove captain assignment from their team
       if (captain?.teamId) {
         setTeams(teams.map(t =>
@@ -460,6 +469,7 @@ const CaptainManagement = ({ captains, setCaptains, teams, setTeams, isAuthentic
         ) : (
           captains.map(captain => {
             const team = teams.find(t => t.id === captain.teamId);
+            const linkedPlayer = players?.find(p => p.id === captain.playerId);
             return (
               <div
                 key={captain.id}
@@ -469,6 +479,11 @@ const CaptainManagement = ({ captains, setCaptains, teams, setTeams, isAuthentic
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
                       <h3 className="font-bold text-lg">{captain.name}</h3>
+                      {linkedPlayer && (
+                        <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs rounded flex items-center gap-1">
+                          ⭐ Player
+                        </span>
+                      )}
                       {captain.status === 'inactive' && (
                         <span className="px-2 py-1 bg-gray-300 text-gray-700 text-xs rounded">
                           Inactive
@@ -482,6 +497,9 @@ const CaptainManagement = ({ captains, setCaptains, teams, setTeams, isAuthentic
                     </div>
                     <div className="text-sm text-gray-600 space-y-1">
                       <p><strong>Username:</strong> {captain.username}</p>
+                      {linkedPlayer && (
+                        <p className="text-purple-700"><strong>Linked Player:</strong> {linkedPlayer.firstName} {linkedPlayer.lastName}</p>
+                      )}
                       <p><strong>Team:</strong> <span className={!captain.teamId ? 'text-gray-400 italic' : ''}>{team ? team.name : 'Unassigned'}</span></p>
                       {captain.email && (
                         <p><strong>Email:</strong> {captain.email}</p>
@@ -502,8 +520,8 @@ const CaptainManagement = ({ captains, setCaptains, teams, setTeams, isAuthentic
                       </button>
                       <button
                         onClick={() => handleDelete(captain.id)}
-                        className="text-red-600 hover:text-red-800 p-2"
-                        title="Delete captain"
+                        className={`p-2 ${linkedPlayer ? 'text-gray-400 cursor-not-allowed' : 'text-red-600 hover:text-red-800'}`}
+                        title={linkedPlayer ? "Remove captain status from player first" : "Delete captain"}
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
