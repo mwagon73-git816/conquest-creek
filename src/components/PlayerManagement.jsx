@@ -342,11 +342,23 @@ const PlayerManagement = ({
     // Load captain data if player is a captain
     const linkedCaptain = captains.find(c => c.playerId === player.id);
 
+    // Fix NTRP data type mismatch - convert to string with 1 decimal place
+    const ntrpValue = player.ntrpRating.toFixed(1);
+
+    // Debug logging to verify NTRP conversion
+    console.log('Edit Player NTRP Debug:', {
+      stored: player.ntrpRating,
+      storedType: typeof player.ntrpRating,
+      converted: ntrpValue,
+      convertedType: typeof ntrpValue,
+      player: `${player.firstName} ${player.lastName}`
+    });
+
     setPlayerFormData({
       firstName: player.firstName,
       lastName: player.lastName,
       gender: player.gender,
-      ntrpRating: String(player.ntrpRating),
+      ntrpRating: ntrpValue,
       dynamicRating: player.dynamicRating || '',
       email: player.email || '',
       phone: player.phone || '',
