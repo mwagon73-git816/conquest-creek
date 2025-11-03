@@ -14,6 +14,8 @@ import MatchHistory from './components/MatchHistory';
 import MediaGallery from './components/MediaGallery';
 import ActivityLog from './components/ActivityLog';
 import TournamentRules from './components/TournamentRules';
+import DataSyncManager from './components/DataSyncManager';
+import ConflictResolutionModal from './components/ConflictResolutionModal';
 
 const App = () => {
   const [teams, setTeams] = useState([]);
@@ -36,6 +38,13 @@ const App = () => {
   const [saveStatus, setSaveStatus] = useState('');
   const [editingMatch, setEditingMatch] = useState(null); // Match being edited
 
+  // Conflict detection and sync management
+  const [dataVersions, setDataVersions] = useState({});
+  const [activeSessions, setActiveSessions] = useState([]);
+  const [importLock, setImportLock] = useState(null);
+  const [lastDataLoad, setLastDataLoad] = useState(null);
+  const [conflictData, setConflictData] = useState(null);
+
   const TOURNAMENT_DIRECTORS = [
     { username: 'MW#', name: 'Matt Wagoner', role: 'director' },
     { username: 'JN$', name: 'John Nguyen', role: 'director' }
@@ -52,53 +61,144 @@ const App = () => {
     }
   };
 
+  // Check for import lock
+  const checkImportLock = async () => {
+    try {
+      const lock = await tournamentStorage.getImportLock();
+      setImportLock(lock);
+      return lock;
+    } catch (error) {
+      console.error('Error checking import lock:', error);
+      return null;
+    }
+  };
+
+  // Update session activity
+  const updateSessionActivity = async () => {
+    if (isAuthenticated && loginName) {
+      try {
+        await tournamentStorage.updateSessionActivity(loginName);
+      } catch (error) {
+        console.error('Error updating session activity:', error);
+      }
+    }
+  };
+
+  // Load all data with version tracking
+  const loadAllData = async () => {
+    try {
+      const versions = {};
+
+      const teamsData = await tournamentStorage.getTeams();
+      if (teamsData) {
+        versions.teams = teamsData.updatedAt;
+        const parsed = JSON.parse(teamsData.data);
+
+        // Ensure all teams have bonuses structure
+        if (parsed.teams) {
+          const teamsWithBonuses = parsed.teams.map(team => ({
+            ...team,
+            bonuses: team.bonuses || {
+              uniformType: 'none',
+              uniformPhotoSubmitted: false,
+              practices: {}
+            }
+          }));
+          setTeams(teamsWithBonuses);
+        }
+
+        if (parsed.players) setPlayers(parsed.players);
+        if (parsed.trades) setTrades(parsed.trades);
+      } else {
+        setPlayers([]);
+        setTeams([]);
+        setTrades([]);
+      }
+
+      const matchesData = await tournamentStorage.getMatches();
+      if (matchesData) {
+        versions.matches = matchesData.updatedAt;
+        setMatches(JSON.parse(matchesData.data));
+      }
+
+      const bonusData = await tournamentStorage.getBonuses();
+      if (bonusData) {
+        versions.bonuses = bonusData.updatedAt;
+        setBonusEntries(JSON.parse(bonusData.data));
+      }
+
+      const photosData = await tournamentStorage.getPhotos();
+      if (photosData) {
+        versions.photos = photosData.updatedAt;
+        setPhotos(JSON.parse(photosData.data));
+      }
+
+      const captainsData = await tournamentStorage.getCaptains();
+      if (captainsData) {
+        versions.captains = captainsData.updatedAt;
+        setCaptains(JSON.parse(captainsData.data));
+      }
+
+      // Load activity logs (most recent 100)
+      const logsData = await tournamentStorage.getActivityLogs(100);
+      if (logsData) setActivityLogs(logsData);
+
+      // Update data versions and last load time
+      setDataVersions(versions);
+      setLastDataLoad(new Date().toISOString());
+
+      setSaveStatus('Data loaded');
+      return true;
+    } catch (error) {
+      console.error('Error loading data:', error);
+      return false;
+    }
+  };
+
+  // Refresh data manually
+  const handleRefreshData = async () => {
+    setLoading(true);
+    try {
+      await loadAllData();
+      await checkImportLock();
+
+      // Load active sessions
+      const sessions = await tournamentStorage.getActiveSessions();
+      setActiveSessions(sessions || []);
+
+      alert('Data refreshed successfully!');
+    } catch (error) {
+      console.error('Error refreshing data:', error);
+      alert('Error refreshing data. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Import lock helpers for CSV import
+  const setImportLockHelper = async (operation) => {
+    if (loginName) {
+      const lock = await tournamentStorage.setImportLock(loginName, operation);
+      setImportLock(lock);
+      return lock;
+    }
+  };
+
+  const releaseImportLockHelper = async () => {
+    await tournamentStorage.releaseImportLock();
+    setImportLock(null);
+  };
+
   useEffect(() => {
     const loadData = async () => {
       try {
-        const teamsData = await tournamentStorage.getTeams();
-        if (teamsData) {
-          const parsed = JSON.parse(teamsData);
-          
-          // Ensure all teams have bonuses structure
-          if (parsed.teams) {
-            const teamsWithBonuses = parsed.teams.map(team => ({
-              ...team,
-              bonuses: team.bonuses || {
-                uniformType: 'none',
-                uniformPhotoSubmitted: false,
-                practices: {}
-              }
-            }));
-            setTeams(teamsWithBonuses);
-          }
-          
-          if (parsed.players) setPlayers(parsed.players);
-          if (parsed.trades) setTrades(parsed.trades);
-        } else {
-          setPlayers([]);
-          setTeams([]);
-          setTrades([]);
-        }
-        
-        const matchesData = await tournamentStorage.getMatches();
-        if (matchesData) setMatches(JSON.parse(matchesData));
-        
-        const bonusData = await tournamentStorage.getBonuses();
-        if (bonusData) setBonusEntries(JSON.parse(bonusData));
+        // Load all data with version tracking
+        await loadAllData();
 
-        const photosData = await tournamentStorage.getPhotos();
-        if (photosData) setPhotos(JSON.parse(photosData));
-
-        const captainsData = await tournamentStorage.getCaptains();
-        if (captainsData) setCaptains(JSON.parse(captainsData));
-
-        // Load activity logs (most recent 100)
-        const logsData = await tournamentStorage.getActivityLogs(100);
-        if (logsData) setActivityLogs(logsData);
-
+        // Load auth session
         const authData = await tournamentStorage.getAuthSession();
         if (authData) {
-          const session = JSON.parse(authData);
+          const session = JSON.parse(authData.data);
           const now = Date.now();
           const expiresAt = new Date(session.expiresAt).getTime();
 
@@ -107,20 +207,30 @@ const App = () => {
             setLoginName(session.name);
             setUserRole(session.role || 'director');
             setUserTeamId(session.teamId || null);
+
+            // Register active session for directors
+            if (session.role === 'director') {
+              await tournamentStorage.setActiveSession(session.name, 'director');
+            }
           } else {
             // Session expired
             tournamentStorage.deleteAuthSession();
           }
         }
 
-        setSaveStatus('Data loaded');
+        // Load active sessions and import lock
+        const sessions = await tournamentStorage.getActiveSessions();
+        setActiveSessions(sessions || []);
+
+        await checkImportLock();
+
       } catch (error) {
         console.error('Error loading data:', error);
       } finally {
         setLoading(false);
       }
     };
-    
+
     loadData();
   }, []);
 
@@ -212,6 +322,26 @@ const App = () => {
         }));
         setLoginName(director.name);
 
+        // Register active session
+        tournamentStorage.setActiveSession(director.name, 'director').then(sessions => {
+          setActiveSessions(sessions || []);
+
+          // Check for other active directors
+          const otherDirectors = (sessions || []).filter(s =>
+            s.role === 'director' && s.username !== director.name
+          );
+
+          if (otherDirectors.length > 0) {
+            alert(
+              'Welcome, ' + director.name + '!\n\n⚠️ Warning: Another director is currently logged in:\n' +
+              otherDirectors.map(s => `• ${s.username}`).join('\n') +
+              '\n\nMaking changes may cause data conflicts. Use the "Reload Latest Data" button frequently to stay synchronized.'
+            );
+          } else {
+            alert('Welcome, ' + director.name + '!');
+          }
+        });
+
         // Log the login
         const logEntry = createLogEntry(
           ACTION_TYPES.USER_LOGIN,
@@ -222,7 +352,6 @@ const App = () => {
 
         setShowLogin(false);
         setLoginPassword('');
-        alert('Welcome, ' + director.name + '!');
       } else {
         alert('Invalid username.');
       }
@@ -283,12 +412,18 @@ const App = () => {
     );
     await tournamentStorage.addActivityLog(logEntry);
 
+    // Remove active session
+    if (loginName) {
+      await tournamentStorage.removeActiveSession(loginName);
+    }
+
     setIsAuthenticated(false);
     setLoginName('');
     setUserRole('');
     setUserTeamId(null);
     setLoginPassword('');
     tournamentStorage.deleteAuthSession();
+    setActiveSessions([]);
     setActiveTab('leaderboard');
   };
 
@@ -588,6 +723,28 @@ const App = () => {
           isAuthenticated={isAuthenticated}
         />
 
+        <DataSyncManager
+          isAuthenticated={isAuthenticated}
+          userRole={userRole}
+          loginName={loginName}
+          activeSessions={activeSessions}
+          importLock={importLock}
+          lastDataLoad={lastDataLoad}
+          onRefresh={handleRefreshData}
+          onUpdateActivity={updateSessionActivity}
+        />
+
+        <ConflictResolutionModal
+          conflict={conflictData}
+          onReload={handleRefreshData}
+          onOverwrite={() => {
+            // For now, just close the modal
+            // Actual overwrite logic would need to be implemented per-save
+            setConflictData(null);
+          }}
+          onCancel={() => setConflictData(null)}
+        />
+
         <div className="space-y-6">
           {activeTab === 'leaderboard' && (
             <Leaderboard
@@ -625,6 +782,9 @@ const App = () => {
               getEffectiveRating={getEffectiveRating}
               canAddPlayerToTeam={canAddPlayerToTeam}
               addLog={addLog}
+              importLock={importLock}
+              setImportLock={setImportLockHelper}
+              releaseImportLock={releaseImportLockHelper}
             />
           )}
 

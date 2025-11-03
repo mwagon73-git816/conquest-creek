@@ -6,7 +6,7 @@ export const storage = {
     try {
       const docRef = doc(db, collectionName, docId || 'data');
       const docSnap = await getDoc(docRef);
-      
+
       if (docSnap.exists()) {
         return docSnap.data();
       }
@@ -17,14 +17,38 @@ export const storage = {
     }
   },
 
-  async set(collectionName, data, docId) {
+  async set(collectionName, data, docId, expectedVersion = null) {
     try {
       const docRef = doc(db, collectionName, docId || 'data');
+
+      // Conflict detection: check if data has been modified
+      if (expectedVersion) {
+        const currentDoc = await getDoc(docRef);
+        if (currentDoc.exists()) {
+          const currentVersion = currentDoc.data().updatedAt;
+          if (currentVersion !== expectedVersion) {
+            // Data has been modified by another user
+            return {
+              success: false,
+              conflict: true,
+              currentVersion,
+              expectedVersion,
+              message: 'Data has been updated by another user. Please refresh to see latest changes.'
+            };
+          }
+        }
+      }
+
+      const newVersion = new Date().toISOString();
       await setDoc(docRef, {
         data: data,
-        updatedAt: new Date().toISOString()
+        updatedAt: newVersion
       });
-      return true;
+
+      return {
+        success: true,
+        version: newVersion
+      };
     } catch (error) {
       console.error('Error setting data:', error);
       throw error;
@@ -139,5 +163,88 @@ export const tournamentStorage = {
       console.error('Error getting activity logs:', error);
       throw error;
     }
+  },
+
+  // Players management with version tracking
+  async getPlayers() {
+    const result = await storage.get('players');
+    return result ? result.data : null;
+  },
+
+  async setPlayers(players, expectedVersion = null) {
+    return await storage.set('players', players, 'data', expectedVersion);
+  },
+
+  // Active session management
+  async getActiveSessions() {
+    const result = await storage.get('active_sessions');
+    return result ? result.data : null;
+  },
+
+  async setActiveSession(username, role) {
+    const sessions = await this.getActiveSessions() || [];
+    const existingSessionIndex = sessions.findIndex(s => s.username === username);
+
+    const newSession = {
+      username,
+      role,
+      loginTime: new Date().toISOString(),
+      lastActivity: new Date().toISOString()
+    };
+
+    if (existingSessionIndex >= 0) {
+      sessions[existingSessionIndex] = newSession;
+    } else {
+      sessions.push(newSession);
+    }
+
+    // Clean up sessions older than 2 hours
+    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+    const activeSessions = sessions.filter(s => s.lastActivity > twoHoursAgo);
+
+    await storage.set('active_sessions', activeSessions);
+    return activeSessions;
+  },
+
+  async removeActiveSession(username) {
+    const sessions = await this.getActiveSessions() || [];
+    const filteredSessions = sessions.filter(s => s.username !== username);
+    await storage.set('active_sessions', filteredSessions);
+    return filteredSessions;
+  },
+
+  async updateSessionActivity(username) {
+    const sessions = await this.getActiveSessions() || [];
+    const session = sessions.find(s => s.username === username);
+    if (session) {
+      session.lastActivity = new Date().toISOString();
+      await storage.set('active_sessions', sessions);
+    }
+  },
+
+  // Import lock management
+  async getImportLock() {
+    const result = await storage.get('import_lock');
+    return result ? result.data : null;
+  },
+
+  async setImportLock(username, operation) {
+    const lock = {
+      username,
+      operation,
+      startTime: new Date().toISOString()
+    };
+    await storage.set('import_lock', lock);
+    return lock;
+  },
+
+  async releaseImportLock() {
+    await storage.delete('import_lock');
+  },
+
+  // Get data version for conflict detection
+  async getDataVersion(collectionName) {
+    const result = await storage.get(collectionName);
+    return result ? result.updatedAt : null;
   }
 };
