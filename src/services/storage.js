@@ -69,8 +69,8 @@ export const storage = {
 
 export const tournamentStorage = {
   async getTeams() {
-    const result = await storage.get(COLLECTIONS.TEAMS);
-    return result ? result.data : null;
+    // FIXED: Return the whole result object, not just result.data
+    return await storage.get(COLLECTIONS.TEAMS);
   },
 
   async setTeams(teams) {
@@ -78,8 +78,8 @@ export const tournamentStorage = {
   },
 
   async getMatches() {
-    const result = await storage.get(COLLECTIONS.MATCHES);
-    return result ? result.data : null;
+    // FIXED: Return the whole result object
+    return await storage.get(COLLECTIONS.MATCHES);
   },
 
   async setMatches(matches) {
@@ -87,8 +87,8 @@ export const tournamentStorage = {
   },
 
   async getBonuses() {
-    const result = await storage.get(COLLECTIONS.BONUSES);
-    return result ? result.data : null;
+    // FIXED: Return the whole result object
+    return await storage.get(COLLECTIONS.BONUSES);
   },
 
   async setBonuses(bonuses) {
@@ -97,7 +97,7 @@ export const tournamentStorage = {
 
   async getAuthSession() {
     const result = await storage.get(COLLECTIONS.AUTH, 'session');
-    return result ? result.data : null;
+    return result ? result : null;
   },
 
   async setAuthSession(session) {
@@ -109,8 +109,8 @@ export const tournamentStorage = {
   },
 
   async getPhotos() {
-    const result = await storage.get(COLLECTIONS.PHOTOS);
-    return result ? result.data : null;
+    // FIXED: Return the whole result object
+    return await storage.get(COLLECTIONS.PHOTOS);
   },
 
   async setPhotos(photos) {
@@ -118,8 +118,8 @@ export const tournamentStorage = {
   },
 
   async getCaptains() {
-    const result = await storage.get(COLLECTIONS.CAPTAINS);
-    return result ? result.data : null;
+    // FIXED: Return the whole result object
+    return await storage.get(COLLECTIONS.CAPTAINS);
   },
 
   async setCaptains(captains) {
@@ -167,8 +167,7 @@ export const tournamentStorage = {
 
   // Players management with version tracking
   async getPlayers() {
-    const result = await storage.get('players');
-    return result ? result.data : null;
+    return await storage.get('players');
   },
 
   async setPlayers(players, expectedVersion = null) {

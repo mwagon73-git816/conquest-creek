@@ -1,4 +1,5 @@
 import React from 'react';
+import { Save } from 'lucide-react';
 import { APP_VERSION } from '../version';
 import tennisCourtImage from '../assets/tennis-court.jpg';
 
@@ -48,7 +49,15 @@ const InstagramLogo = ({ className = "w-5 h-5" }) => (
   </svg>
 );
 
-const Header = ({ isAuthenticated, loginName, userRole, saveStatus, handleLogout, setShowLogin }) => {
+const Header = ({ 
+  isAuthenticated, 
+  loginName, 
+  userRole, 
+  saveStatus, 
+  handleLogout, 
+  setShowLogin,
+  onManualSave 
+}) => {
   const getRoleDisplay = () => {
     if (userRole === 'director') return 'Director';
     if (userRole === 'captain') return 'Captain';
@@ -89,6 +98,26 @@ const Header = ({ isAuthenticated, loginName, userRole, saveStatus, handleLogout
                 {userRole === 'director' && `Director: ${loginName}`}
                 {userRole === 'captain' && `Captain: ${loginName}`}
               </div>
+              
+              {/* Manual Save Button - Only for Directors */}
+              {userRole === 'director' && onManualSave && (
+                <button
+                  onClick={onManualSave}
+                  className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition-colors font-medium shadow-md"
+                  title="Manually save all data to Firebase"
+                >
+                  <Save className="w-4 h-4" />
+                  Save Data
+                </button>
+              )}
+              
+              {/* Save Status */}
+              {saveStatus && (
+                <div className="text-xs text-blue-100 bg-blue-700 bg-opacity-50 px-2 py-1 rounded">
+                  {saveStatus}
+                </div>
+              )}
+              
               <button
                 onClick={handleLogout}
                 className="bg-white text-blue-600 px-3 py-1 rounded text-sm hover:bg-blue-50"

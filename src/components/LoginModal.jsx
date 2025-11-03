@@ -33,6 +33,7 @@ const LoginModal = ({
           <button
             onClick={() => {
               setLoginRole('director');
+              setLoginName('');
               setLoginPassword('');
             }}
             className={`flex-1 px-4 py-2 font-semibold transition ${
@@ -61,7 +62,7 @@ const LoginModal = ({
 
         <p className="text-sm text-gray-600 mb-4">
           {loginRole === 'director'
-            ? 'Only tournament directors can access all features.'
+            ? 'Tournament directors have access to all features.'
             : 'Captains can enter matches for their team.'}
         </p>
 
@@ -75,16 +76,15 @@ const LoginModal = ({
           autoFocus
         />
 
-        {loginRole === 'captain' && (
-          <input
-            type="password"
-            placeholder="Password"
-            value={loginPassword}
-            onChange={(e) => setLoginPassword(e.target.value)}
-            onKeyPress={handleKeyPress}
-            className="w-full mb-3 px-3 py-2 border rounded"
-          />
-        )}
+        {/* Password field for BOTH directors and captains */}
+        <input
+          type="password"
+          placeholder="Password"
+          value={loginPassword}
+          onChange={(e) => setLoginPassword(e.target.value)}
+          onKeyPress={handleKeyPress}
+          className="w-full mb-3 px-3 py-2 border rounded"
+        />
 
         <div className="flex gap-2 mt-4">
           <button

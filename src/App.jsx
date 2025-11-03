@@ -32,13 +32,12 @@ const App = () => {
   const [showLogin, setShowLogin] = useState(false);
   const [loginName, setLoginName] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
-  const [loginRole, setLoginRole] = useState('director'); // 'director' or 'captain'
-  const [userRole, setUserRole] = useState(''); // Current user's role
-  const [userTeamId, setUserTeamId] = useState(null); // For captain role
+  const [loginRole, setLoginRole] = useState('director');
+  const [userRole, setUserRole] = useState('');
+  const [userTeamId, setUserTeamId] = useState(null);
   const [saveStatus, setSaveStatus] = useState('');
-  const [editingMatch, setEditingMatch] = useState(null); // Match being edited
+  const [editingMatch, setEditingMatch] = useState(null);
 
-  // Conflict detection and sync management
   const [dataVersions, setDataVersions] = useState({});
   const [activeSessions, setActiveSessions] = useState([]);
   const [importLock, setImportLock] = useState(null);
@@ -46,11 +45,9 @@ const App = () => {
   const [conflictData, setConflictData] = useState(null);
 
   const TOURNAMENT_DIRECTORS = [
-    { username: 'MW#', name: 'Matt Wagoner', role: 'director' },
-    { username: 'JN$', name: 'John Nguyen', role: 'director' }
+    { username: 'cctdir', password: 'cct2025$', name: 'Tournament Director', role: 'director' }
   ];
 
-  // Helper function to add activity logs
   const addLog = async (action, details, entityId = null, before = null, after = null) => {
     try {
       const user = loginName || 'System';
@@ -61,7 +58,6 @@ const App = () => {
     }
   };
 
-  // Check for import lock
   const checkImportLock = async () => {
     try {
       const lock = await tournamentStorage.getImportLock();
@@ -73,7 +69,6 @@ const App = () => {
     }
   };
 
-  // Update session activity
   const updateSessionActivity = async () => {
     if (isAuthenticated && loginName) {
       try {
@@ -84,85 +79,155 @@ const App = () => {
     }
   };
 
-  // Load all data with version tracking
   const loadAllData = async () => {
+    console.log('🔵 loadAllData() called');
+    console.log('Current state before load:', { 
+      playersCount: players.length, 
+      teamsCount: teams.length,
+      matchesCount: matches.length,
+      captainsCount: captains.length,
+      photosCount: photos.length
+    });
+    
     try {
       const versions = {};
 
+      console.log('📥 Fetching teams data from Firebase...');
       const teamsData = await tournamentStorage.getTeams();
+      console.log('Teams data received:', teamsData ? 'YES' : 'NO/NULL');
+      
       if (teamsData) {
         versions.teams = teamsData.updatedAt;
-        const parsed = JSON.parse(teamsData.data);
+        
+        if (!teamsData.data || teamsData.data === 'undefined' || teamsData.data === 'null') {
+          console.error('❌ Firebase returned invalid data:', teamsData.data);
+          console.log('⚪ Initializing empty teams/players/trades due to corrupt data');
+          setPlayers([]);
+          setTeams([]);
+          setTrades([]);
+        } else {
+          const parsed = JSON.parse(teamsData.data);
+          console.log('Parsed teams data:', {
+            players: parsed.players?.length || 0,
+            teams: parsed.teams?.length || 0,
+            trades: parsed.trades?.length || 0
+          });
 
-        // Ensure all teams have bonuses structure
-        if (parsed.teams) {
-          const teamsWithBonuses = parsed.teams.map(team => ({
-            ...team,
-            bonuses: team.bonuses || {
-              uniformType: 'none',
-              uniformPhotoSubmitted: false,
-              practices: {}
-            }
-          }));
-          setTeams(teamsWithBonuses);
+          if (parsed.teams) {
+            const teamsWithBonuses = parsed.teams.map(team => ({
+              ...team,
+              bonuses: team.bonuses || {
+                uniformType: 'none',
+                uniformPhotoSubmitted: false,
+                practices: {}
+              }
+            }));
+            setTeams(teamsWithBonuses);
+          }
+
+          if (parsed.players) setPlayers(parsed.players);
+          if (parsed.trades) setTrades(parsed.trades);
         }
-
-        if (parsed.players) setPlayers(parsed.players);
-        if (parsed.trades) setTrades(parsed.trades);
       } else {
-        setPlayers([]);
-        setTeams([]);
-        setTrades([]);
+        if (players.length === 0 && teams.length === 0 && trades.length === 0) {
+          console.log('⚪ First load - initializing empty teams/players/trades');
+          setPlayers([]);
+          setTeams([]);
+          setTrades([]);
+        } else {
+          console.warn('⚠️ Firebase returned no teams data but we have existing state - keeping it to prevent data loss');
+          console.warn('Existing state:', { players: players.length, teams: teams.length, trades: trades.length });
+        }
       }
 
+      console.log('📥 Fetching matches data from Firebase...');
       const matchesData = await tournamentStorage.getMatches();
+      console.log('Matches data received:', matchesData ? 'YES' : 'NO/NULL');
+      
       if (matchesData) {
         versions.matches = matchesData.updatedAt;
-        setMatches(JSON.parse(matchesData.data));
+        const parsedMatches = JSON.parse(matchesData.data);
+        console.log('Parsed matches:', parsedMatches.length);
+        setMatches(parsedMatches);
+      } else {
+        if (matches.length === 0) {
+          console.log('⚪ First load - initializing empty matches');
+          setMatches([]);
+        } else {
+          console.warn('⚠️ Firebase returned no matches data but we have existing state - keeping it');
+        }
       }
 
+      console.log('📥 Fetching bonuses data from Firebase...');
       const bonusData = await tournamentStorage.getBonuses();
+      console.log('Bonuses data received:', bonusData ? 'YES' : 'NO/NULL');
+      
       if (bonusData) {
         versions.bonuses = bonusData.updatedAt;
         setBonusEntries(JSON.parse(bonusData.data));
+      } else {
+        if (bonusEntries.length === 0) {
+          console.log('⚪ First load - initializing empty bonuses');
+          setBonusEntries([]);
+        } else {
+          console.warn('⚠️ Firebase returned no bonus data but we have existing state - keeping it');
+        }
       }
 
+      console.log('📥 Fetching photos data from Firebase...');
       const photosData = await tournamentStorage.getPhotos();
+      console.log('Photos data received:', photosData ? 'YES' : 'NO/NULL');
+      
       if (photosData) {
         versions.photos = photosData.updatedAt;
         setPhotos(JSON.parse(photosData.data));
+      } else {
+        if (photos.length === 0) {
+          console.log('⚪ First load - initializing empty photos');
+          setPhotos([]);
+        } else {
+          console.warn('⚠️ Firebase returned no photos data but we have existing state - keeping it');
+        }
       }
 
+      console.log('📥 Fetching captains data from Firebase...');
       const captainsData = await tournamentStorage.getCaptains();
+      console.log('Captains data received:', captainsData ? 'YES' : 'NO/NULL');
+      
       if (captainsData) {
         versions.captains = captainsData.updatedAt;
         setCaptains(JSON.parse(captainsData.data));
+      } else {
+        if (captains.length === 0) {
+          console.log('⚪ First load - initializing empty captains');
+          setCaptains([]);
+        } else {
+          console.warn('⚠️ Firebase returned no captains data but we have existing state - keeping it');
+        }
       }
 
-      // Load activity logs (most recent 100)
       const logsData = await tournamentStorage.getActivityLogs(100);
       if (logsData) setActivityLogs(logsData);
 
-      // Update data versions and last load time
       setDataVersions(versions);
       setLastDataLoad(new Date().toISOString());
 
+      console.log('✅ loadAllData() completed successfully');
       setSaveStatus('Data loaded');
       return true;
     } catch (error) {
-      console.error('Error loading data:', error);
+      console.error('❌ Error loading data:', error);
+      console.warn('⚠️ Error loading data - keeping existing state to prevent data loss');
       return false;
     }
   };
 
-  // Refresh data manually
   const handleRefreshData = async () => {
     setLoading(true);
     try {
       await loadAllData();
       await checkImportLock();
 
-      // Load active sessions
       const sessions = await tournamentStorage.getActiveSessions();
       setActiveSessions(sessions || []);
 
@@ -175,7 +240,6 @@ const App = () => {
     }
   };
 
-  // Import lock helpers for CSV import
   const setImportLockHelper = async (operation) => {
     if (loginName) {
       const lock = await tournamentStorage.setImportLock(loginName, operation);
@@ -189,13 +253,59 @@ const App = () => {
     setImportLock(null);
   };
 
+  // AUTO-SAVE DISABLED TO PREVENT DATA LOSS
+  // Manually save using handleManualSave() instead
+  
+  const handleManualSave = async () => {
+    console.log('🟢 MANUAL SAVE called');
+    console.log('Data being saved:', { 
+      players: players.length, 
+      teams: teams.length,
+      trades: trades.length,
+      matches: matches.length,
+      bonusEntries: bonusEntries.length,
+      photos: photos.length,
+      captains: captains.length
+    });
+    
+    if (loading) {
+      alert('Please wait, data is still loading...');
+      return;
+    }
+
+    try {
+      setSaveStatus('Saving...');
+      
+      console.log('💾 Saving teams/players/trades to Firebase...');
+      await tournamentStorage.setTeams(JSON.stringify({ players, teams, trades }));
+      
+      console.log('💾 Saving matches to Firebase...');
+      await tournamentStorage.setMatches(JSON.stringify(matches));
+      
+      console.log('💾 Saving bonuses to Firebase...');
+      await tournamentStorage.setBonuses(JSON.stringify(bonusEntries));
+      
+      console.log('💾 Saving photos to Firebase...');
+      await tournamentStorage.setPhotos(JSON.stringify(photos));
+      
+      console.log('💾 Saving captains to Firebase...');
+      await tournamentStorage.setCaptains(JSON.stringify(captains));
+      
+      console.log('✅ All data saved successfully!');
+      setSaveStatus('✅ Saved ' + new Date().toLocaleTimeString());
+      alert('All data saved successfully!');
+    } catch (error) {
+      console.error('❌ Error saving:', error);
+      setSaveStatus('❌ Save failed');
+      alert('Error saving data: ' + error.message);
+    }
+  };
+
   useEffect(() => {
     const loadData = async () => {
       try {
-        // Load all data with version tracking
         await loadAllData();
 
-        // Load auth session
         const authData = await tournamentStorage.getAuthSession();
         if (authData) {
           const session = JSON.parse(authData.data);
@@ -208,17 +318,14 @@ const App = () => {
             setUserRole(session.role || 'director');
             setUserTeamId(session.teamId || null);
 
-            // Register active session for directors
             if (session.role === 'director') {
               await tournamentStorage.setActiveSession(session.name, 'director');
             }
           } else {
-            // Session expired
             tournamentStorage.deleteAuthSession();
           }
         }
 
-        // Load active sessions and import lock
         const sessions = await tournamentStorage.getActiveSessions();
         setActiveSessions(sessions || []);
 
@@ -235,47 +342,15 @@ const App = () => {
   }, []);
 
   useEffect(() => {
-    const saveData = async () => {
-      if (!loading) {
-        try {
-          await tournamentStorage.setTeams(JSON.stringify({ players, teams, trades }));
-          setSaveStatus('Saved ' + new Date().toLocaleTimeString());
-        } catch (error) {
-          console.error('Error saving:', error);
-        }
-      }
-    };
-    saveData();
-  }, [players, teams, trades, loading]);
-
-  useEffect(() => {
-    if (!loading) tournamentStorage.setMatches(JSON.stringify(matches));
-  }, [matches, loading]);
-
-  useEffect(() => {
-    if (!loading) tournamentStorage.setBonuses(JSON.stringify(bonusEntries));
-  }, [bonusEntries, loading]);
-
-  useEffect(() => {
-    if (!loading) tournamentStorage.setPhotos(JSON.stringify(photos));
-  }, [photos, loading]);
-
-  useEffect(() => {
-    if (!loading) tournamentStorage.setCaptains(JSON.stringify(captains));
-  }, [captains, loading]);
-
-  // Session validity checker - runs every 60 seconds
-  useEffect(() => {
     const checkSessionValidity = async () => {
       if (isAuthenticated) {
         const authData = await tournamentStorage.getAuthSession();
         if (authData) {
-          const session = JSON.parse(authData);
+          const session = JSON.parse(authData.data);
           const now = Date.now();
           const expiresAt = new Date(session.expiresAt).getTime();
 
           if (now >= expiresAt) {
-            // Session expired
             setIsAuthenticated(false);
             setLoginName('');
             setUserRole('');
@@ -285,7 +360,6 @@ const App = () => {
             alert('Your session has expired due to inactivity. Please log in again.');
           }
         } else {
-          // Session data missing
           setIsAuthenticated(false);
           setLoginName('');
           setUserRole('');
@@ -295,23 +369,25 @@ const App = () => {
       }
     };
 
-    const intervalId = setInterval(checkSessionValidity, 60 * 1000); // Check every 60 seconds
+    const intervalId = setInterval(checkSessionValidity, 60 * 1000);
 
-    return () => clearInterval(intervalId); // Clean up on unmount
+    return () => clearInterval(intervalId);
   }, [isAuthenticated]);
 
   const handleLogin = () => {
     const normalizedUsername = loginName.trim();
 
     if (loginRole === 'director') {
-      // Director login - no password required
-      const director = TOURNAMENT_DIRECTORS.find(d => d.username === normalizedUsername);
+      const director = TOURNAMENT_DIRECTORS.find(d => 
+        d.username === normalizedUsername && 
+        d.password === loginPassword
+      );
 
       if (director) {
         setIsAuthenticated(true);
         setUserRole('director');
         setUserTeamId(null);
-        const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // 30 minutes
+        const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
         tournamentStorage.setAuthSession(JSON.stringify({
           username: director.username,
           name: director.name,
@@ -322,27 +398,10 @@ const App = () => {
         }));
         setLoginName(director.name);
 
-        // Register active session
-        tournamentStorage.setActiveSession(director.name, 'director').then(sessions => {
-          setActiveSessions(sessions || []);
-
-          // Check for other active directors
-          const otherDirectors = (sessions || []).filter(s =>
-            s.role === 'director' && s.username !== director.name
-          );
-
-          if (otherDirectors.length > 0) {
-            alert(
-              'Welcome, ' + director.name + '!\n\n⚠️ Warning: Another director is currently logged in:\n' +
-              otherDirectors.map(s => `• ${s.username}`).join('\n') +
-              '\n\nMaking changes may cause data conflicts. Use the "Reload Latest Data" button frequently to stay synchronized.'
-            );
-          } else {
-            alert('Welcome, ' + director.name + '!');
-          }
+        tournamentStorage.setActiveSession(director.name, 'director').then(() => {
+          alert('Welcome, ' + director.name + '!');
         });
 
-        // Log the login
         const logEntry = createLogEntry(
           ACTION_TYPES.USER_LOGIN,
           director.name,
@@ -353,10 +412,9 @@ const App = () => {
         setShowLogin(false);
         setLoginPassword('');
       } else {
-        alert('Invalid username.');
+        alert('Invalid username or password.');
       }
     } else if (loginRole === 'captain') {
-      // Captain login - requires password
       const captain = captains.find(c =>
         c.username === normalizedUsername &&
         c.password === loginPassword &&
@@ -367,7 +425,7 @@ const App = () => {
         setIsAuthenticated(true);
         setUserRole('captain');
         setUserTeamId(captain.teamId);
-        const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // 30 minutes
+        const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
         tournamentStorage.setAuthSession(JSON.stringify({
           username: captain.username,
           name: captain.name,
@@ -378,7 +436,6 @@ const App = () => {
         }));
         setLoginName(captain.name);
 
-        // Log the login
         const team = teams.find(t => t.id === captain.teamId);
         const logEntry = createLogEntry(
           ACTION_TYPES.USER_LOGIN,
@@ -389,9 +446,8 @@ const App = () => {
 
         setShowLogin(false);
         setLoginPassword('');
-        setActiveTab('entry'); // Captains start on match entry
+        setActiveTab('entry');
 
-        // Show different message for unassigned captains
         if (!captain.teamId) {
           alert('Welcome, Captain ' + captain.name + '!\n\nYou are not currently assigned to a team. Please contact the tournament directors to be assigned to a team before you can enter matches.');
         } else {
@@ -404,7 +460,6 @@ const App = () => {
   };
 
   const handleLogout = async () => {
-    // Log the logout before clearing the user info
     const logEntry = createLogEntry(
       ACTION_TYPES.USER_LOGOUT,
       loginName || 'Unknown',
@@ -412,7 +467,6 @@ const App = () => {
     );
     await tournamentStorage.addActivityLog(logEntry);
 
-    // Remove active session
     if (loginName) {
       await tournamentStorage.removeActiveSession(loginName);
     }
@@ -432,10 +486,8 @@ const App = () => {
   };
 
   const handleAddPhoto = (photoData) => {
-    // Enforce max 50 photos limit
     let updatedPhotos = [...photos];
     if (updatedPhotos.length >= 50) {
-      // Remove oldest photo
       updatedPhotos.sort((a, b) => new Date(a.uploadTimestamp) - new Date(b.uploadTimestamp));
       updatedPhotos = updatedPhotos.slice(1);
     }
@@ -490,7 +542,7 @@ const App = () => {
   const getPracticeBonus = (practices) => {
     let total = 0;
     Object.values(practices || {}).forEach(count => {
-      total += Math.min(count * 0.5, 2); // Max 2 points per month
+      total += Math.min(count * 0.5, 2);
     });
     return total;
   };
@@ -501,14 +553,12 @@ const App = () => {
     const teamMatches = matches.filter(m => m.team1Id === teamId || m.team2Id === teamId);
     const matchesByMonth = {};
 
-    // Only count matches in tournament months: Nov 2025, Dec 2025, Jan 2026
-    const tournamentMonths = ['2025-10', '2025-11', '2026-0']; // Nov=10, Dec=11, Jan=0
+    const tournamentMonths = ['2025-10', '2025-11', '2026-0'];
 
     teamMatches.forEach(match => {
       const date = new Date(match.date);
       const monthKey = date.getFullYear() + '-' + date.getMonth();
 
-      // Only count if it's a tournament month
       if (tournamentMonths.includes(monthKey)) {
         if (!matchesByMonth[monthKey]) matchesByMonth[monthKey] = [];
         matchesByMonth[monthKey].push(match);
@@ -517,7 +567,6 @@ const App = () => {
 
     let totalBonus = 0;
 
-    // Match volume bonuses - only apply to tournament months
     tournamentMonths.forEach(monthKey => {
       const count = matchesByMonth[monthKey] ? matchesByMonth[monthKey].length : 0;
       if (count >= 5) totalBonus += 1;
@@ -527,7 +576,6 @@ const App = () => {
       if (count < 4) totalBonus -= 4;
     });
 
-    // Full Roster Participation Bonus: +1 per month if all 9 team members play
     tournamentMonths.forEach(monthKey => {
       const monthMatches = matchesByMonth[monthKey] || [];
       if (monthMatches.length > 0) {
@@ -544,7 +592,6 @@ const App = () => {
       }
     });
 
-    // Variety Bonus Type 1: +1 per month for playing 3+ different teams
     tournamentMonths.forEach(monthKey => {
       const monthMatches = matchesByMonth[monthKey] || [];
       const opponentTeams = new Set();
@@ -557,7 +604,6 @@ const App = () => {
       }
     });
 
-    // Variety Bonus Type 2: +1 per month for playing at 3+ different NTRP levels
     tournamentMonths.forEach(monthKey => {
       const monthMatches = matchesByMonth[monthKey] || [];
       const levels = new Set();
@@ -569,7 +615,6 @@ const App = () => {
       }
     });
 
-    // Mixed Doubles Bonus: +1 per month for at least 2 mixed doubles matches
     tournamentMonths.forEach(monthKey => {
       const monthMatches = matchesByMonth[monthKey] || [];
       let mixedDoublesCount = 0;
@@ -596,18 +641,14 @@ const App = () => {
       }
     });
 
-    // Manual bonus entries (if still used)
     bonusEntries.filter(b => b.teamId === teamId).forEach(bonus => {
       totalBonus += bonus.points;
     });
 
-    // Team Spirit Bonuses
     if (team && team.bonuses) {
-      // Uniform bonus (season-long)
       const uniformBonus = getUniformBonus(team.bonuses.uniformType, team.bonuses.uniformPhotoSubmitted);
       totalBonus += uniformBonus;
 
-      // Practice bonus (monthly)
       const practiceBonus = getPracticeBonus(team.bonuses.practices);
       totalBonus += practiceBonus;
     }
@@ -714,6 +755,7 @@ const App = () => {
           saveStatus={saveStatus}
           handleLogout={handleLogout}
           setShowLogin={setShowLogin}
+          onManualSave={handleManualSave}
         />
 
         <TabNavigation
@@ -738,8 +780,6 @@ const App = () => {
           conflict={conflictData}
           onReload={handleRefreshData}
           onOverwrite={() => {
-            // For now, just close the modal
-            // Actual overwrite logic would need to be implemented per-save
             setConflictData(null);
           }}
           onCancel={() => setConflictData(null)}
