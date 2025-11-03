@@ -448,7 +448,7 @@ const TeamsManagement = ({
                     <div className="text-sm text-gray-600">
                       Captain: {assignedCaptain ? (
                         <span className="font-semibold text-purple-700">
-                          {assignedCaptain.name}{assignedCaptain.email ? ` (${assignedCaptain.email})` : ''}
+                          {assignedCaptain.name}
                         </span>
                       ) : (
                         <span className="text-gray-400 italic">Not Assigned</span>
