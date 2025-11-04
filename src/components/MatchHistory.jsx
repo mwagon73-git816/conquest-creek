@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { TrendingUp, Edit, Trash2, ChevronDown, ChevronUp, Filter } from 'lucide-react';
 import { formatNTRP, formatDynamic } from '../utils/formatters';
+import TeamLogo from './TeamLogo';
 
 const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTab, players, userRole, userTeamId, setEditingMatch }) => {
   const [showFilters, setShowFilters] = useState(false);
@@ -206,6 +207,7 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
                             onChange={() => handleTeamToggle(team.id)}
                             className="w-4 h-4 text-blue-600"
                           />
+                          <TeamLogo team={team} size="sm" showBorder={!!team.logo} />
                           <span className="text-sm">{team.name}</span>
                         </label>
                       ))}
@@ -304,20 +306,24 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
                     <div className="flex items-center gap-2 mb-1">
                       {match.winner === 'team1' ? (
                         <>
+                          <TeamLogo team={team1} size="sm" showBorder={!!team1?.logo} />
                           <span className="font-bold text-green-600">
                             {team1 ? team1.name : 'Team ' + match.team1Id}
                           </span>
                           <span className="text-sm">def.</span>
+                          <TeamLogo team={team2} size="sm" showBorder={!!team2?.logo} />
                           <span className="font-semibold">
                             {team2 ? team2.name : 'Team ' + match.team2Id}
                           </span>
                         </>
                       ) : (
                         <>
+                          <TeamLogo team={team2} size="sm" showBorder={!!team2?.logo} />
                           <span className="font-bold text-green-600">
                             {team2 ? team2.name : 'Team ' + match.team2Id}
                           </span>
                           <span className="text-sm">def.</span>
+                          <TeamLogo team={team1} size="sm" showBorder={!!team1?.logo} />
                           <span className="font-semibold">
                             {team1 ? team1.name : 'Team ' + match.team1Id}
                           </span>

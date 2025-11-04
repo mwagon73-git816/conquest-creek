@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import { Users, Plus, Trash2, X, Award, Edit, Check } from 'lucide-react';
+import { Users, Plus, Trash2, X, Award, Edit, Check, Upload, Image as ImageIcon } from 'lucide-react';
 import { ACTION_TYPES } from '../services/activityLogger';
 import { formatNTRP, formatDynamic } from '../utils/formatters';
+import TeamLogo from './TeamLogo';
+import LogoPreviewModal from './LogoPreviewModal';
 
 const TeamsManagement = ({
   teams,
@@ -17,10 +19,13 @@ const TeamsManagement = ({
 }) => {
   const [showTeamForm, setShowTeamForm] = useState(false);
   const [editingTeam, setEditingTeam] = useState(null);
+  const [previewLogo, setPreviewLogo] = useState(null);
   const [teamFormData, setTeamFormData] = useState({
     name: '',
     captainId: null,
     color: '#3B82F6',
+    logo: null,
+    logoUploadedAt: null,
     uniformType: 'none',
     uniformPhotoSubmitted: false,
     practices: {
@@ -29,6 +34,7 @@ const TeamsManagement = ({
       '2026-01': 0
     }
   });
+  const [logoPreview, setLogoPreview] = useState(null);
 
   const handleAddNewTeam = () => {
     setShowTeamForm(true);
@@ -37,6 +43,8 @@ const TeamsManagement = ({
       name: '',
       captainId: null,
       color: '#3B82F6',
+      logo: null,
+      logoUploadedAt: null,
       uniformType: 'none',
       uniformPhotoSubmitted: false,
       practices: {
@@ -45,6 +53,7 @@ const TeamsManagement = ({
         '2026-01': 0
       }
     });
+    setLogoPreview(null);
   };
 
   const handleEditTeam = (team) => {
@@ -53,6 +62,8 @@ const TeamsManagement = ({
       name: team.name,
       captainId: team.captainId || null,
       color: team.color,
+      logo: team.logo || null,
+      logoUploadedAt: team.logoUploadedAt || null,
       uniformType: team.bonuses?.uniformType || 'none',
       uniformPhotoSubmitted: team.bonuses?.uniformPhotoSubmitted || false,
       practices: team.bonuses?.practices || {
@@ -61,7 +72,104 @@ const TeamsManagement = ({
         '2026-01': 0
       }
     });
+    setLogoPreview(team.logo || null);
     setShowTeamForm(true);
+  };
+
+  const handleLogoUpload = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Validation
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/svg+xml'];
+    if (!validTypes.includes(file.type)) {
+      alert('Please upload a valid image file (PNG, JPG, JPEG, or SVG)');
+      return;
+    }
+
+    const maxSize = 2 * 1024 * 1024; // 2MB
+    if (file.size > maxSize) {
+      alert('File size must be less than 2MB');
+      return;
+    }
+
+    // Read file as base64
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const imageData = e.target.result;
+
+      // For SVG, store as-is
+      if (file.type === 'image/svg+xml') {
+        setTeamFormData({
+          ...teamFormData,
+          logo: imageData,
+          logoUploadedAt: new Date().toISOString()
+        });
+        setLogoPreview(imageData);
+        return;
+      }
+
+      // For raster images, compress similar to MediaGallery
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Max dimensions for logo (smaller than match photos)
+        const maxWidth = 800;
+        const maxHeight = 800;
+
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > maxWidth) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxHeight) {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        ctx.drawImage(img, 0, 0, width, height);
+
+        // Compress to target size (100-300 KB for logos)
+        let quality = 0.9;
+        let compressedData = canvas.toDataURL('image/jpeg', quality);
+
+        while (compressedData.length > 300 * 1024 && quality > 0.5) {
+          quality -= 0.1;
+          compressedData = canvas.toDataURL('image/jpeg', quality);
+        }
+
+        setTeamFormData({
+          ...teamFormData,
+          logo: compressedData,
+          logoUploadedAt: new Date().toISOString()
+        });
+        setLogoPreview(compressedData);
+      };
+
+      img.src = imageData;
+    };
+
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveLogo = () => {
+    if (confirm('Remove team logo? The team will revert to showing the color background.')) {
+      setTeamFormData({
+        ...teamFormData,
+        logo: null,
+        logoUploadedAt: null
+      });
+      setLogoPreview(null);
+    }
   };
 
   const handleSaveTeam = () => {
@@ -92,6 +200,8 @@ const TeamsManagement = ({
       name: teamFormData.name.trim(),
       captainId: selectedCaptainId,
       color: teamFormData.color,
+      logo: teamFormData.logo || null,
+      logoUploadedAt: teamFormData.logoUploadedAt || null,
       bonuses: {
         uniformType: teamFormData.uniformType,
         uniformPhotoSubmitted: teamFormData.uniformPhotoSubmitted,
@@ -317,6 +427,59 @@ const TeamsManagement = ({
                 />
                 <span className="text-sm text-gray-600">{teamFormData.color}</span>
               </div>
+              <p className="text-xs text-gray-500 mt-1">Used when no logo is uploaded</p>
+            </div>
+
+            <div className="col-span-2">
+              <label className="block text-sm font-semibold mb-2">Team Logo</label>
+              <div className="flex gap-4 items-start">
+                {logoPreview ? (
+                  <div className="flex items-center gap-4">
+                    <div className="w-24 h-24 border-2 border-gray-300 rounded flex items-center justify-center overflow-hidden bg-white">
+                      <img
+                        src={logoPreview}
+                        alt="Team logo preview"
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <label className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 cursor-pointer flex items-center gap-2 text-sm">
+                        <Upload className="w-4 h-4" />
+                        Replace Logo
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/jpg,image/svg+xml"
+                          onChange={handleLogoUpload}
+                          className="hidden"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={handleRemoveLogo}
+                        className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 flex items-center gap-2 text-sm"
+                      >
+                        <X className="w-4 h-4" />
+                        Remove Logo
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <label className="border-2 border-dashed border-gray-300 rounded-lg p-6 cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-colors flex flex-col items-center gap-2">
+                    <ImageIcon className="w-8 h-8 text-gray-400" />
+                    <span className="text-sm font-semibold text-gray-700">Upload Team Logo</span>
+                    <span className="text-xs text-gray-500">PNG, JPG, JPEG, or SVG (max 2MB)</span>
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/jpg,image/svg+xml"
+                      onChange={handleLogoUpload}
+                      className="hidden"
+                    />
+                  </label>
+                )}
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                Optional: Upload a custom logo for your team. If no logo is uploaded, the team color will be displayed.
+              </p>
             </div>
 
             <div className="col-span-2 border-t pt-4 mt-2">
@@ -442,7 +605,13 @@ const TeamsManagement = ({
             <div key={team.id} className="border rounded p-4">
               <div className="flex justify-between items-start mb-3">
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded" style={{ backgroundColor: team.color }} />
+                  <TeamLogo
+                    team={team}
+                    size="md"
+                    showBorder={!!team.logo}
+                    clickable={!!team.logo}
+                    onClick={() => team.logo && setPreviewLogo({ url: team.logo, teamName: team.name })}
+                  />
                   <div>
                     <div className="font-bold text-lg">{team.name}</div>
                     <div className="text-sm text-gray-600">
@@ -548,6 +717,14 @@ const TeamsManagement = ({
         })}
       </div>
       {teams.length === 0 && <p className="text-center text-gray-500 py-8">No teams created yet</p>}
+
+      {/* Logo Preview Modal */}
+      <LogoPreviewModal
+        isOpen={!!previewLogo}
+        onClose={() => setPreviewLogo(null)}
+        logoUrl={previewLogo?.url}
+        teamName={previewLogo?.teamName}
+      />
     </div>
   );
 };

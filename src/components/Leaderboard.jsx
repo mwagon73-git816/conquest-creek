@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Trophy, ChevronUp, ChevronDown } from 'lucide-react';
 import MatchPhotos from './MatchPhotos';
 import { formatNTRP } from '../utils/formatters';
+import TeamLogo from './TeamLogo';
 
 const Leaderboard = ({ teams, getLeaderboard, photos, isAuthenticated, onDeletePhoto }) => {
   const [sortColumn, setSortColumn] = useState('totalPoints');
@@ -161,7 +162,7 @@ const Leaderboard = ({ teams, getLeaderboard, photos, isAuthenticated, onDeleteP
                 </td>
                 <td className="p-2">
                   <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 rounded" style={{ backgroundColor: team.color }} />
+                    <TeamLogo team={team} size="sm" showBorder={!!team.logo} />
                     <span className="font-semibold">{team.name}</span>
                   </div>
                 </td>

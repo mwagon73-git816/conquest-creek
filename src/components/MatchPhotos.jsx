@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
+import TeamLogo from './TeamLogo';
 
 const MatchPhotos = ({ photos, teams, isAuthenticated, onDeletePhoto }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -37,8 +38,12 @@ const MatchPhotos = ({ photos, teams, isAuthenticated, onDeletePhoto }) => {
     }
   };
 
+  const getTeam = (teamId) => {
+    return teams.find(t => t.id === teamId);
+  };
+
   const getTeamName = (teamId) => {
-    const team = teams.find(t => t.id === teamId);
+    const team = getTeam(teamId);
     return team ? team.name : 'Unknown Team';
   };
 
@@ -131,32 +136,74 @@ const MatchPhotos = ({ photos, teams, isAuthenticated, onDeletePhoto }) => {
             <div>
               {currentPhoto.winner ? (
                 <>
-                  <p className="text-lg">
-                    <span className="font-bold text-green-300">
-                      {currentPhoto.winner === 'team1'
-                        ? (currentPhoto.team1Name || getTeamName(currentPhoto.team1Id))
-                        : (currentPhoto.team2Name || getTeamName(currentPhoto.team2Id))}
-                    </span>
-                    <span className="font-semibold"> def. </span>
-                    <span className="font-semibold">
-                      {currentPhoto.winner === 'team1'
-                        ? (currentPhoto.team2Name || getTeamName(currentPhoto.team2Id))
-                        : (currentPhoto.team1Name || getTeamName(currentPhoto.team1Id))}
-                    </span>
+                  <div className="flex items-center gap-2 text-lg">
+                    {currentPhoto.winner === 'team1' ? (
+                      <>
+                        <TeamLogo
+                          team={getTeam(currentPhoto.team1Id)}
+                          size="sm"
+                          showBorder={!!getTeam(currentPhoto.team1Id)?.logo}
+                        />
+                        <span className="font-bold text-green-300">
+                          {currentPhoto.team1Name || getTeamName(currentPhoto.team1Id)}
+                        </span>
+                        <span className="font-semibold"> def. </span>
+                        <TeamLogo
+                          team={getTeam(currentPhoto.team2Id)}
+                          size="sm"
+                          showBorder={!!getTeam(currentPhoto.team2Id)?.logo}
+                        />
+                        <span className="font-semibold">
+                          {currentPhoto.team2Name || getTeamName(currentPhoto.team2Id)}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <TeamLogo
+                          team={getTeam(currentPhoto.team2Id)}
+                          size="sm"
+                          showBorder={!!getTeam(currentPhoto.team2Id)?.logo}
+                        />
+                        <span className="font-bold text-green-300">
+                          {currentPhoto.team2Name || getTeamName(currentPhoto.team2Id)}
+                        </span>
+                        <span className="font-semibold"> def. </span>
+                        <TeamLogo
+                          team={getTeam(currentPhoto.team1Id)}
+                          size="sm"
+                          showBorder={!!getTeam(currentPhoto.team1Id)?.logo}
+                        />
+                        <span className="font-semibold">
+                          {currentPhoto.team1Name || getTeamName(currentPhoto.team1Id)}
+                        </span>
+                      </>
+                    )}
                     {formatMatchScore(currentPhoto) && (
                       <span className="font-semibold text-blue-100"> {formatMatchScore(currentPhoto)}</span>
                     )}
-                  </p>
+                  </div>
                   <p className="text-sm text-blue-100 mt-1">
                     {formatDate(currentPhoto.matchDate)}
                   </p>
                 </>
               ) : (
                 <>
-                  <p className="font-semibold text-lg">
-                    {currentPhoto.team1Name || getTeamName(currentPhoto.team1Id)} vs {currentPhoto.team2Name || getTeamName(currentPhoto.team2Id)}
-                  </p>
-                  <p className="text-sm text-blue-100">
+                  <div className="flex items-center gap-2 font-semibold text-lg">
+                    <TeamLogo
+                      team={getTeam(currentPhoto.team1Id)}
+                      size="sm"
+                      showBorder={!!getTeam(currentPhoto.team1Id)?.logo}
+                    />
+                    <span>{currentPhoto.team1Name || getTeamName(currentPhoto.team1Id)}</span>
+                    <span>vs</span>
+                    <TeamLogo
+                      team={getTeam(currentPhoto.team2Id)}
+                      size="sm"
+                      showBorder={!!getTeam(currentPhoto.team2Id)?.logo}
+                    />
+                    <span>{currentPhoto.team2Name || getTeamName(currentPhoto.team2Id)}</span>
+                  </div>
+                  <p className="text-sm text-blue-100 mt-1">
                     {formatDate(currentPhoto.matchDate)}
                   </p>
                 </>
