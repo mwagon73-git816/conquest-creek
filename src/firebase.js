@@ -25,4 +25,8 @@ export const COLLECTIONS = {
   PHOTOS: 'photos',
   CAPTAINS: 'captains',
   ACTIVITY_LOGS: 'activity_logs'
+
 };
+
+console.log(`🔥 Firebase: ${import.meta.env.MODE} mode`);
+console.log(`📊 Project: ${firebaseConfig.projectId}`);
