@@ -99,12 +99,12 @@ const Header = ({
                 {userRole === 'captain' && `Captain: ${loginName}`}
               </div>
               
-              {/* Manual Save Button - Only for Directors */}
-              {userRole === 'director' && onManualSave && (
+              {/* Manual Save Button - Available for Directors and Captains */}
+              {(userRole === 'director' || userRole === 'captain') && onManualSave && (
                 <button
                   onClick={onManualSave}
-                  className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition-colors font-medium shadow-md"
-                  title="Manually save all data to Firebase"
+                  className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition-colors font-medium shadow-md animate-pulse"
+                  title="Save all changes to Firebase database"
                 >
                   <Save className="w-4 h-4" />
                   Save Data

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Trophy, Users, Calendar, TrendingUp, UserPlus, Shield, Activity, Image } from 'lucide-react';
+import { Trophy, Users, Calendar, TrendingUp, UserPlus, Shield, Activity, Image, Swords } from 'lucide-react';
 
 const TabNavigation = ({ activeTab, setActiveTab, userRole, isAuthenticated }) => {
   const allTabs = [
@@ -7,6 +7,7 @@ const TabNavigation = ({ activeTab, setActiveTab, userRole, isAuthenticated }) =
     { id: 'teams', icon: Users, label: 'Teams', roles: ['director', ''] },
     { id: 'players', icon: UserPlus, label: 'Players', roles: ['director', ''] },
     { id: 'captains', icon: Shield, label: 'Captains', roles: ['director'] },
+    { id: 'challenges', icon: Swords, label: 'Challenges', roles: ['director', 'captain', ''] },
     { id: 'entry', icon: Calendar, label: 'Match Entry', roles: ['director', 'captain', ''] },
     { id: 'matches', icon: TrendingUp, label: 'Matches', roles: ['director', 'captain', ''] },
     { id: 'media', icon: Image, label: 'Media', roles: ['director', 'captain', ''] },

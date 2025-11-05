@@ -128,26 +128,26 @@ const PlayerManagement = ({
 
   const handleSavePlayer = () => {
     if (!playerFormData.firstName || !playerFormData.lastName) {
-      alert('First name and last name are required');
+      alert('⚠️ First name and last name are required.');
       return;
     }
 
     // Captain validation
     if (playerFormData.isCaptain) {
       if (!playerFormData.captainUsername.trim()) {
-        alert('Captain username is required when making player a captain');
+        alert('⚠️ Captain username is required.');
         return;
       }
       if (!playerFormData.captainPassword.trim()) {
-        alert('Captain password is required when making player a captain');
+        alert('⚠️ Captain password is required.');
         return;
       }
       if (!playerFormData.captainEmail.trim()) {
-        alert('Captain email is required when making player a captain');
+        alert('⚠️ Captain email is required.');
         return;
       }
       if (!validateEmail(playerFormData.captainEmail)) {
-        alert('Please enter a valid captain email address');
+        alert('⚠️ Please enter a valid email address.');
         return;
       }
 
@@ -157,7 +157,7 @@ const PlayerManagement = ({
         (!editingPlayer || c.playerId !== editingPlayer.id)
       );
       if (existingCaptain) {
-        alert('Captain username already exists. Please choose a different username.');
+        alert('⚠️ Captain username already exists.\n\nPlease choose a different username.');
         return;
       }
 
@@ -167,7 +167,7 @@ const PlayerManagement = ({
         (!editingPlayer || c.playerId !== editingPlayer.id)
       );
       if (duplicateEmail) {
-        alert('Captain email already exists. Please use a different email.');
+        alert('⚠️ Captain email already exists.\n\nPlease use a different email.');
         return;
       }
     }
@@ -212,7 +212,7 @@ const PlayerManagement = ({
           const existingTeamCaptain = captains.find(c => c.teamId === teamId && c.status === 'active');
           if (existingTeamCaptain) {
             const team = teams.find(t => t.id === teamId);
-            if (!confirm(`Team "${team?.name}" already has a captain. Assigning this captain will unassign the current captain. Continue?`)) {
+            if (!confirm(`Team "${team?.name}" already has a captain.\n\nAssigning this captain will unassign the current captain.\n\nContinue?`)) {
               return;
             }
             // Unassign existing captain
@@ -235,7 +235,7 @@ const PlayerManagement = ({
         };
         setCaptains([...captains, newCaptain]);
 
-        alert(`Player promoted to captain!\nUsername: ${playerData.captainUsername}\nPassword: ${playerData.captainPassword}`);
+        alert(`✅ Player promoted to captain!\n\nUsername: ${playerData.captainUsername}\nPassword: ${playerData.captainPassword}\n\n⚠️ IMPORTANT: Click the "Save Data" button to save this to the database.`);
       } else if (!isCaptainNow && wasCaptain) {
         // Player captain status is being removed
         const linkedCaptain = captains.find(c => c.playerId === editingPlayer.id);
@@ -294,7 +294,7 @@ const PlayerManagement = ({
         };
         setCaptains([...captains, newCaptain]);
 
-        alert(`Player added and promoted to captain!\nUsername: ${playerData.captainUsername}\nPassword: ${playerData.captainPassword}`);
+        alert(`✅ Player added and promoted to captain!\n\nUsername: ${playerData.captainUsername}\nPassword: ${playerData.captainPassword}\n\n⚠️ IMPORTANT: Click the "Save Data" button to save this to the database.`);
       }
 
       // Log the add
@@ -376,9 +376,9 @@ const PlayerManagement = ({
     const player = players.find(p => p.id === playerId);
     const linkedCaptain = captains.find(c => c.playerId === playerId);
 
-    let confirmMessage = 'Delete this player?';
+    let confirmMessage = 'Are you sure you want to delete this player?\n\nThis action cannot be undone.';
     if (linkedCaptain) {
-      confirmMessage = 'This player is also a captain. Deleting will remove their captain login access. Continue?';
+      confirmMessage = 'This player is also a captain.\n\nDeleting will remove their captain login access.\n\nThis action cannot be undone.\n\nContinue?';
     }
 
     if (confirm(confirmMessage)) {
@@ -584,7 +584,7 @@ const PlayerManagement = ({
         setParsedPlayers(validated);
       },
       error: (error) => {
-        alert('Error parsing CSV: ' + error.message);
+        alert('❌ Invalid CSV format.\n\n' + error.message + '\n\nPlease check your file format and try again.');
         setCsvFile(null);
       }
     });
@@ -594,7 +594,7 @@ const PlayerManagement = ({
     const validPlayers = parsedPlayers.filter(p => p.isValid);
 
     if (validPlayers.length === 0) {
-      alert('No valid players to import');
+      alert('⚠️ No valid players to import.\n\nPlease check your CSV file for errors.');
       return;
     }
 
@@ -658,7 +658,7 @@ const PlayerManagement = ({
     setPlayers([...updatedPlayers, ...newPlayers]);
 
     console.log('=== Import Complete ===');
-    alert(`Import complete:\n\n${playersToUpdate.length} player(s) updated\n${playersToAdd.length} player(s) added`);
+    alert(`✅ Import successful!\n\n${playersToUpdate.length} player(s) updated\n${playersToAdd.length} player(s) added\n\n⚠️ IMPORTANT: Click the "Save Data" button to save this to the database.`);
 
     // Reset import form
     setShowImportForm(false);
@@ -708,7 +708,7 @@ const PlayerManagement = ({
     // Close modal and reset
     handleCloseDeleteModal();
 
-    alert('All players have been deleted');
+    alert('✅ All players have been deleted.\n\n⚠️ IMPORTANT: Click the "Save Data" button to save this to the database.');
   };
 
   const isDeleteTextValid = deleteConfirmText === 'DELETE ALL PLAYERS';

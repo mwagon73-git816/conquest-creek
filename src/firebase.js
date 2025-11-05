@@ -24,8 +24,8 @@ export const COLLECTIONS = {
   AUTH: 'auth',
   PHOTOS: 'photos',
   CAPTAINS: 'captains',
-  ACTIVITY_LOGS: 'activity_logs'
-
+  ACTIVITY_LOGS: 'activity_logs',
+  CHALLENGES: 'challenges'
 };
 
 console.log(`🔥 Firebase: ${import.meta.env.MODE} mode`);

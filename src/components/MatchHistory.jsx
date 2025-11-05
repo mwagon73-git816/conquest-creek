@@ -1,12 +1,30 @@
 import React, { useState } from 'react';
-import { TrendingUp, Edit, Trash2, ChevronDown, ChevronUp, Filter } from 'lucide-react';
+import { TrendingUp, Edit, Trash2, ChevronDown, ChevronUp, Filter, Clock, Calendar, Check } from 'lucide-react';
 import { formatNTRP, formatDynamic } from '../utils/formatters';
 import TeamLogo from './TeamLogo';
 
-const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTab, players, userRole, userTeamId, setEditingMatch }) => {
+const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTab, players, userRole, userTeamId, setEditingMatch, challenges, onEnterPendingResults }) => {
   const [showFilters, setShowFilters] = useState(false);
   const [selectedTeams, setSelectedTeams] = useState([]);
   const [selectedPlayers, setSelectedPlayers] = useState([]);
+  const [matchStatusFilter, setMatchStatusFilter] = useState('all'); // 'all', 'pending', 'completed'
+
+  // Debug: Log component props on mount and when challenges change
+  React.useEffect(() => {
+    console.log('=== MATCH HISTORY COMPONENT ===');
+    console.log('Props received:');
+    console.log('  - matches:', matches?.length || 0);
+    console.log('  - teams:', teams?.length || 0);
+    console.log('  - players:', players?.length || 0);
+    console.log('  - challenges:', challenges?.length || 0);
+    console.log('  - challenges data:', challenges);
+    console.log('  - isAuthenticated:', isAuthenticated);
+    console.log('  - userRole:', userRole);
+    console.log('  - userTeamId:', userTeamId);
+    console.log('  - onEnterPendingResults:', typeof onEnterPendingResults);
+    console.log('===============================');
+  }, [challenges, matches, teams, players, isAuthenticated, userRole, userTeamId]);
+
   const handleEditMatch = (match) => {
     // Pass the match data to MatchEntry for editing
     setEditingMatch(match);
@@ -86,6 +104,62 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
 
   const hasActiveFilters = selectedTeams.length > 0 || selectedPlayers.length > 0;
 
+  // Get pending matches (accepted challenges not yet completed)
+  const getPendingMatches = () => {
+    console.log('=== MATCH HISTORY: Get Pending Matches ===');
+    console.log('Challenges prop:', challenges);
+    console.log('Challenges type:', typeof challenges);
+    console.log('Challenges is array?:', Array.isArray(challenges));
+
+    if (!challenges) {
+      console.log('⚠️ No challenges data available');
+      return [];
+    }
+
+    const pending = challenges
+      .filter(c => c.status === 'accepted')
+      .sort((a, b) => {
+        const dateA = new Date(a.acceptedAt || a.createdAt);
+        const dateB = new Date(b.acceptedAt || b.createdAt);
+        return dateB - dateA; // Newest first
+      });
+
+    console.log('Accepted challenges found:', pending.length);
+    console.log('Accepted challenges:', pending);
+    return pending;
+  };
+
+  // Get team name helper
+  const getTeamName = (teamId) => {
+    const team = teams.find(t => t.id === teamId);
+    return team ? team.name : 'Unknown Team';
+  };
+
+  // Get player names from IDs
+  const getPlayerNames = (playerIds) => {
+    if (!playerIds || playerIds.length === 0) return [];
+    return playerIds.map(id => {
+      const player = players.find(p => p.id === id);
+      return player ? {
+        name: `${player.firstName} ${player.lastName}`,
+        rating: player.ntrpRating,
+        dynamicRating: player.dynamicRating,
+        gender: player.gender
+      } : null;
+    }).filter(p => p !== null);
+  };
+
+  // Check if user can enter results for a pending match
+  const canEnterResults = (pendingMatch) => {
+    if (!isAuthenticated) return false;
+    if (userRole === 'director') return true;
+    if (userRole === 'captain' && userTeamId) {
+      return pendingMatch.challengerTeamId === userTeamId ||
+             pendingMatch.challengedTeamId === userTeamId;
+    }
+    return false;
+  };
+
   // Sort matches by date (newest first), then by timestamp if available
   const sortedMatches = [...matches].sort((a, b) => {
     const dateA = new Date(a.date);
@@ -134,8 +208,60 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
     return true;
   });
 
+  // Get and filter pending matches
+  const allPendingMatches = getPendingMatches();
+
+  console.log('=== FILTERING PENDING MATCHES ===');
+  console.log('All pending matches before filter:', allPendingMatches.length);
+  console.log('User role:', userRole);
+  console.log('User team ID:', userTeamId);
+
+  const filteredPendingMatches = allPendingMatches.filter(challenge => {
+    console.log('Checking challenge:', challenge.id);
+
+    // Captain restriction: only show challenges involving their team
+    if (userRole === 'captain' && userTeamId) {
+      const captainTeamInvolved = challenge.challengerTeamId === userTeamId ||
+                                   challenge.challengedTeamId === userTeamId;
+      console.log('  Captain filter - Team involved?', captainTeamInvolved);
+      if (!captainTeamInvolved) return false;
+    }
+
+    // Team filter
+    if (selectedTeams.length > 0) {
+      const challengeHasSelectedTeam = selectedTeams.includes(challenge.challengerTeamId) ||
+                                       selectedTeams.includes(challenge.challengedTeamId);
+      if (!challengeHasSelectedTeam) return false;
+    }
+
+    // Player filter
+    if (selectedPlayers.length > 0) {
+      const challengePlayers = [
+        ...(challenge.challengerPlayers || []),
+        ...(challenge.challengedPlayers || [])
+      ];
+      const challengeHasSelectedPlayer = selectedPlayers.some(playerId =>
+        challengePlayers.includes(playerId)
+      );
+      if (!challengeHasSelectedPlayer) return false;
+    }
+
+    console.log('  Challenge passed all filters');
+    return true;
+  });
+
+  console.log('Filtered pending matches count:', filteredPendingMatches.length);
+  console.log('Filtered pending matches:', filteredPendingMatches);
+  console.log('=================================');
+
   const totalMatches = matches.length;
+  const totalPending = allPendingMatches.length;
   const displayedMatches = filteredMatches.length;
+  const displayedPending = filteredPendingMatches.length;
+
+  // Determine what to show based on status filter
+  const showPending = matchStatusFilter === 'all' || matchStatusFilter === 'pending';
+  const showCompleted = matchStatusFilter === 'all' || matchStatusFilter === 'completed';
 
   // Check if user can edit/delete a match
   const canEditMatch = (match) => {
@@ -151,10 +277,24 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
     <div className="bg-white rounded-lg shadow-md p-6">
       <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
         <TrendingUp className="w-6 h-6" />
-        Recent Matches
+        Matches
       </h2>
 
-      {/* Filters Section */}
+      {/* Status Filter Dropdown */}
+      <div className="mb-4">
+        <label className="block text-sm font-medium mb-2">Filter by Status:</label>
+        <select
+          value={matchStatusFilter}
+          onChange={(e) => setMatchStatusFilter(e.target.value)}
+          className="border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="all">All Matches</option>
+          <option value="pending">Pending Only</option>
+          <option value="completed">Completed Only</option>
+        </select>
+      </div>
+
+      {/* Team/Player Filters Section */}
       <div className="mb-4">
         <button
           onClick={() => setShowFilters(!showFilters)}
@@ -162,7 +302,7 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
         >
           <Filter className="w-4 h-4" />
           <span className="font-semibold">
-            {showFilters ? 'Hide Filters' : 'Show Filters'}
+            {showFilters ? 'Hide Filters' : 'Show Team/Player Filters'}
           </span>
           {hasActiveFilters && (
             <span className="bg-blue-600 text-white text-xs px-2 py-1 rounded-full">
@@ -283,19 +423,159 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
       {/* Match Count Display */}
       {hasActiveFilters && (
         <div className="mb-3 px-3 py-2 bg-blue-100 text-blue-800 rounded text-sm font-semibold">
-          Showing {displayedMatches} of {totalMatches} matches
+          {showPending && showCompleted && (
+            <>Showing {displayedPending} pending + {displayedMatches} completed of {totalPending + totalMatches} total matches</>
+          )}
+          {showPending && !showCompleted && (
+            <>Showing {displayedPending} of {totalPending} pending matches</>
+          )}
+          {!showPending && showCompleted && (
+            <>Showing {displayedMatches} of {totalMatches} completed matches</>
+          )}
         </div>
       )}
 
-      <div className="space-y-3">
-        {matches.length === 0 ? (
-          <p className="text-gray-500 text-center py-8">No matches recorded yet</p>
-        ) : filteredMatches.length === 0 ? (
-          <p className="text-gray-500 text-center py-8">
-            No matches found matching the selected filters
-          </p>
-        ) : (
-          filteredMatches.slice(0, 20).map(match => {
+      {/* Pending Matches Section */}
+      {(() => {
+        console.log('=== RENDERING PENDING MATCHES SECTION ===');
+        console.log('showPending:', showPending);
+        console.log('filteredPendingMatches.length:', filteredPendingMatches.length);
+        return null;
+      })()}
+      {showPending && (
+        <section className="mb-8">
+          <h3 className="text-xl font-bold mb-4 flex items-center gap-2 text-orange-700">
+            <Clock className="w-5 h-5" />
+            Pending Matches ({filteredPendingMatches.length})
+          </h3>
+          {filteredPendingMatches.length === 0 ? (
+            <p className="text-gray-500 text-center py-6 bg-gray-50 rounded border border-gray-200">
+              No pending matches
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {filteredPendingMatches.map(challenge => {
+                const team1 = teams.find(t => t.id === challenge.challengerTeamId);
+                const team2 = teams.find(t => t.id === challenge.challengedTeamId);
+                const team1Players = getPlayerNames(challenge.challengerPlayers);
+                const team2Players = getPlayerNames(challenge.challengedPlayers);
+
+                return (
+                  <div
+                    key={challenge.id}
+                    className="bg-orange-50 border-2 border-orange-300 rounded-lg p-4 hover:bg-orange-100 transition-colors"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        {/* Match Title */}
+                        <div className="flex items-center gap-3 mb-2">
+                          <TeamLogo team={team1} size="sm" showBorder={!!team1?.logo} />
+                          <h4 className="font-bold text-gray-900">
+                            {getTeamName(challenge.challengerTeamId)}
+                          </h4>
+                          <span className="text-blue-600 font-semibold">vs</span>
+                          <TeamLogo team={team2} size="sm" showBorder={!!team2?.logo} />
+                          <h4 className="font-bold text-gray-900">
+                            {getTeamName(challenge.challengedTeamId)}
+                          </h4>
+                          <span className="px-2 py-1 bg-orange-200 text-orange-900 text-xs font-medium rounded">
+                            Level {challenge.acceptedLevel || challenge.proposedLevel}
+                          </span>
+                          <span className="px-2 py-1 bg-yellow-200 text-yellow-900 text-xs font-medium rounded flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            Awaiting Results
+                          </span>
+                        </div>
+
+                        {/* Players */}
+                        <div className="grid grid-cols-2 gap-4 text-sm mb-2">
+                          <div>
+                            <div className="font-semibold text-gray-700 mb-1">
+                              {getTeamName(challenge.challengerTeamId)} Players:
+                            </div>
+                            {team1Players.length > 0 ? (
+                              team1Players.map((player, idx) => (
+                                <div key={idx} className="text-gray-600">
+                                  • {player.name} ({player.gender}) {player.dynamicRating ? formatDynamic(player.dynamicRating) : formatNTRP(player.rating)}
+                                </div>
+                              ))
+                            ) : (
+                              <div className="text-gray-500 italic">No players listed</div>
+                            )}
+                          </div>
+
+                          <div>
+                            <div className="font-semibold text-gray-700 mb-1">
+                              {getTeamName(challenge.challengedTeamId)} Players:
+                            </div>
+                            {team2Players.length > 0 ? (
+                              team2Players.map((player, idx) => (
+                                <div key={idx} className="text-gray-600">
+                                  • {player.name} ({player.gender}) {player.dynamicRating ? formatDynamic(player.dynamicRating) : formatNTRP(player.rating)}
+                                </div>
+                              ))
+                            ) : (
+                              <div className="text-gray-500 italic">No players listed</div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Match Details */}
+                        <div className="flex gap-4 text-sm text-gray-700">
+                          {challenge.acceptedDate && (
+                            <div className="flex items-center gap-1">
+                              <Calendar className="w-4 h-4" />
+                              <span>Scheduled: {formatDate(challenge.acceptedDate)}</span>
+                            </div>
+                          )}
+                          <div className="text-gray-500">
+                            Created: {formatDate(challenge.acceptedAt || challenge.createdAt)}
+                          </div>
+                        </div>
+                        {challenge.notes && (
+                          <div className="text-sm text-gray-600 mt-2">
+                            <strong>Notes:</strong> {challenge.notes}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Enter Results Button */}
+                      {canEnterResults(challenge) && onEnterPendingResults && (
+                        <button
+                          onClick={() => onEnterPendingResults(challenge)}
+                          className="ml-4 flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition-colors font-medium whitespace-nowrap"
+                        >
+                          <Check className="w-4 h-4" />
+                          Enter Results
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* Completed Matches Section */}
+      {showCompleted && (
+        <section>
+          <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+            <TrendingUp className="w-5 h-5" />
+            Recently Completed Matches ({filteredMatches.length})
+          </h3>
+          {matches.length === 0 ? (
+            <p className="text-gray-500 text-center py-6 bg-gray-50 rounded border border-gray-200">
+              No completed matches yet
+            </p>
+          ) : filteredMatches.length === 0 ? (
+            <p className="text-gray-500 text-center py-6 bg-gray-50 rounded border border-gray-200">
+              No matches found matching the selected filters
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {filteredMatches.slice(0, 20).map(match => {
             const team1 = teams.find(t => t.id == match.team1Id);
             const team2 = teams.find(t => t.id == match.team2Id);
             
@@ -388,9 +668,11 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
                 </div>
               </div>
             );
-          })
-        )}
-      </div>
+          })}
+            </div>
+          )}
+        </section>
+      )}
     </div>
   );
 };

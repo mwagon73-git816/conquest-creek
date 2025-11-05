@@ -126,6 +126,14 @@ export const tournamentStorage = {
     return await storage.set(COLLECTIONS.CAPTAINS, captains);
   },
 
+  async getChallenges() {
+    return await storage.get(COLLECTIONS.CHALLENGES);
+  },
+
+  async setChallenges(challenges) {
+    return await storage.set(COLLECTIONS.CHALLENGES, challenges);
+  },
+
   async resetAll() {
     await storage.delete(COLLECTIONS.TEAMS);
     await storage.delete(COLLECTIONS.MATCHES);

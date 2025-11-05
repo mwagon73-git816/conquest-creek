@@ -9,6 +9,7 @@ import Leaderboard from './components/Leaderboard';
 import TeamsManagement from './components/TeamsManagement';
 import PlayerManagement from './components/PlayerManagement';
 import CaptainManagement from './components/CaptainManagement';
+import ChallengeManagement from './components/ChallengeManagement';
 import MatchEntry from './components/MatchEntry';
 import MatchHistory from './components/MatchHistory';
 import MediaGallery from './components/MediaGallery';
@@ -25,6 +26,7 @@ const App = () => {
   const [trades, setTrades] = useState([]);
   const [photos, setPhotos] = useState([]);
   const [captains, setCaptains] = useState([]);
+  const [challenges, setChallenges] = useState([]);
   const [activityLogs, setActivityLogs] = useState([]);
   const [activeTab, setActiveTab] = useState('leaderboard');
   const [loading, setLoading] = useState(true);
@@ -193,7 +195,7 @@ const App = () => {
       console.log('📥 Fetching captains data from Firebase...');
       const captainsData = await tournamentStorage.getCaptains();
       console.log('Captains data received:', captainsData ? 'YES' : 'NO/NULL');
-      
+
       if (captainsData) {
         versions.captains = captainsData.updatedAt;
         setCaptains(JSON.parse(captainsData.data));
@@ -203,6 +205,35 @@ const App = () => {
           setCaptains([]);
         } else {
           console.warn('⚠️ Firebase returned no captains data but we have existing state - keeping it');
+        }
+      }
+
+      console.log('📥 Fetching challenges data from Firebase...');
+      const challengesData = await tournamentStorage.getChallenges();
+      console.log('Challenges data received:', challengesData ? 'YES' : 'NO/NULL');
+
+      if (challengesData) {
+        versions.challenges = challengesData.updatedAt;
+        const parsedChallenges = JSON.parse(challengesData.data);
+        console.log('Parsed challenges count:', parsedChallenges?.length || 0);
+        console.log('Parsed challenges:', parsedChallenges);
+
+        // Log accepted and completed challenges specifically
+        const acceptedChallenges = parsedChallenges?.filter(c => c.status === 'accepted') || [];
+        const completedChallenges = parsedChallenges?.filter(c => c.status === 'completed') || [];
+        console.log('✅ Challenge breakdown:');
+        console.log(`  - Accepted (pending matches): ${acceptedChallenges.length}`);
+        console.log(`  - Completed: ${completedChallenges.length}`);
+        console.log('Accepted challenges data:', acceptedChallenges);
+        console.log('Completed challenges data:', completedChallenges);
+
+        setChallenges(parsedChallenges);
+      } else {
+        if (challenges.length === 0) {
+          console.log('⚪ First load - initializing empty challenges');
+          setChallenges([]);
+        } else {
+          console.warn('⚠️ Firebase returned no challenges data but we have existing state - keeping it');
         }
       }
 
@@ -231,10 +262,10 @@ const App = () => {
       const sessions = await tournamentStorage.getActiveSessions();
       setActiveSessions(sessions || []);
 
-      alert('Data refreshed successfully!');
+      alert('✅ Data refreshed successfully!\n\nYou are now viewing the latest information.');
     } catch (error) {
       console.error('Error refreshing data:', error);
-      alert('Error refreshing data. Please try again.');
+      alert('❌ Error refreshing data.\n\nPlease check your connection and try again.');
     } finally {
       setLoading(false);
     }
@@ -258,46 +289,61 @@ const App = () => {
   
   const handleManualSave = async () => {
     console.log('🟢 MANUAL SAVE called');
-    console.log('Data being saved:', { 
-      players: players.length, 
+    console.log('Data being saved:', {
+      players: players.length,
       teams: teams.length,
       trades: trades.length,
       matches: matches.length,
       bonusEntries: bonusEntries.length,
       photos: photos.length,
-      captains: captains.length
+      captains: captains.length,
+      challenges: challenges.length
     });
-    
+
     if (loading) {
-      alert('Please wait, data is still loading...');
+      alert('⚠️ Please wait, data is still loading.\n\nTry again in a moment.');
       return;
     }
 
     try {
       setSaveStatus('Saving...');
-      
+
       console.log('💾 Saving teams/players/trades to Firebase...');
       await tournamentStorage.setTeams(JSON.stringify({ players, teams, trades }));
-      
+
       console.log('💾 Saving matches to Firebase...');
       await tournamentStorage.setMatches(JSON.stringify(matches));
-      
+
       console.log('💾 Saving bonuses to Firebase...');
       await tournamentStorage.setBonuses(JSON.stringify(bonusEntries));
-      
+
       console.log('💾 Saving photos to Firebase...');
       await tournamentStorage.setPhotos(JSON.stringify(photos));
-      
+
       console.log('💾 Saving captains to Firebase...');
       await tournamentStorage.setCaptains(JSON.stringify(captains));
-      
+
+      console.log('💾 Saving challenges to Firebase...');
+      console.log('Challenges to save:', challenges.length);
+      console.log('Challenge statuses:', challenges.map(c => ({ id: c.id, status: c.status })));
+      const acceptedChallenges = challenges.filter(c => c.status === 'accepted');
+      const completedChallenges = challenges.filter(c => c.status === 'completed');
+      console.log(`  - Accepted (pending): ${acceptedChallenges.length}`);
+      console.log(`  - Completed: ${completedChallenges.length}`);
+      await tournamentStorage.setChallenges(JSON.stringify(challenges));
+
       console.log('✅ All data saved successfully!');
       setSaveStatus('✅ Saved ' + new Date().toLocaleTimeString());
-      alert('All data saved successfully!');
+      alert('✅ All data saved successfully!\n\nChanges have been saved to the database.\n\n' +
+            `Saved:\n` +
+            `  • ${matches.length} matches\n` +
+            `  • ${challenges.length} challenges (${acceptedChallenges.length} pending, ${completedChallenges.length} completed)\n` +
+            `  • ${teams.length} teams\n` +
+            `  • ${players.length} players`);
     } catch (error) {
       console.error('❌ Error saving:', error);
       setSaveStatus('❌ Save failed');
-      alert('Error saving data: ' + error.message);
+      alert('❌ Error saving data.\n\n' + error.message + '\n\nPlease try again or contact support if the problem persists.');
     }
   };
 
@@ -357,7 +403,7 @@ const App = () => {
             setUserTeamId(null);
             tournamentStorage.deleteAuthSession();
             setActiveTab('leaderboard');
-            alert('Your session has expired due to inactivity. Please log in again.');
+            alert('Your session has expired due to inactivity.\n\nPlease log in again to continue.');
           }
         } else {
           setIsAuthenticated(false);
@@ -412,7 +458,7 @@ const App = () => {
         setShowLogin(false);
         setLoginPassword('');
       } else {
-        alert('Invalid username or password.');
+        alert('Invalid username or password.\n\nPlease check your credentials and try again.');
       }
     } else if (loginRole === 'captain') {
       const captain = captains.find(c =>
@@ -449,12 +495,12 @@ const App = () => {
         setActiveTab('entry');
 
         if (!captain.teamId) {
-          alert('Welcome, Captain ' + captain.name + '!\n\nYou are not currently assigned to a team. Please contact the tournament directors to be assigned to a team before you can enter matches.');
+          alert('Welcome, Captain ' + captain.name + '!\n\n⚠️ You are not currently assigned to a team.\n\nPlease contact the tournament directors to be assigned to a team before you can enter matches.');
         } else {
           alert('Welcome, Captain ' + captain.name + '!');
         }
       } else {
-        alert('Invalid username or password.');
+        alert('Invalid username or password.\n\nPlease check your credentials and try again.');
       }
     }
   };
@@ -542,9 +588,10 @@ const App = () => {
   const getPracticeBonus = (practices) => {
     let total = 0;
     Object.values(practices || {}).forEach(count => {
-      total += Math.min(count * 0.5, 2);
+      total += Math.min(count * 0.5, 2); // Cap per month at 2 points
     });
-    return total;
+    // Global cap: Maximum 4 practice bonus points total
+    return Math.min(total, 4);
   };
 
   const calculateBonusPoints = (teamId) => {
@@ -553,30 +600,66 @@ const App = () => {
     const teamMatches = matches.filter(m => m.team1Id === teamId || m.team2Id === teamId);
     const matchesByMonth = {};
 
-    const tournamentMonths = ['2025-10', '2025-11', '2026-0'];
+    // Tournament months: November 2025, December 2025, January 2026
+    const tournamentMonths = [
+      { key: '2025-10', name: 'November 2025', endDate: new Date('2025-11-30T23:59:59') },
+      { key: '2025-11', name: 'December 2025', endDate: new Date('2025-12-31T23:59:59') },
+      { key: '2026-0', name: 'January 2026', endDate: new Date('2026-01-31T23:59:59') }
+    ];
 
     teamMatches.forEach(match => {
       const date = new Date(match.date);
       const monthKey = date.getFullYear() + '-' + date.getMonth();
 
-      if (tournamentMonths.includes(monthKey)) {
+      if (tournamentMonths.some(m => m.key === monthKey)) {
         if (!matchesByMonth[monthKey]) matchesByMonth[monthKey] = [];
         matchesByMonth[monthKey].push(match);
       }
     });
 
     let totalBonus = 0;
+    const today = new Date();
 
-    tournamentMonths.forEach(monthKey => {
+    console.log('=== BONUS CALCULATION DEBUG ===');
+    console.log('Team ID:', teamId);
+    console.log('Team Name:', team?.name);
+    console.log('Today\'s Date:', today.toISOString());
+
+    // Match count bonuses (fixed to use else-if to prevent cumulative addition)
+    tournamentMonths.forEach(monthData => {
+      const monthKey = monthData.key;
       const count = matchesByMonth[monthKey] ? matchesByMonth[monthKey].length : 0;
-      if (count >= 5) totalBonus += 1;
-      if (count >= 10) totalBonus += 2;
-      if (count >= 15) totalBonus += 3;
-      if (count >= 20) totalBonus += 4;
-      if (count < 4) totalBonus -= 4;
+
+      console.log(`\n--- ${monthData.name} ---`);
+      console.log(`Matches played: ${count}`);
+
+      // Positive bonuses for match count
+      if (count >= 20) {
+        totalBonus += 4;
+        console.log(`✅ 20+ matches bonus: +4 points`);
+      } else if (count >= 15) {
+        totalBonus += 3;
+        console.log(`✅ 15+ matches bonus: +3 points`);
+      } else if (count >= 10) {
+        totalBonus += 2;
+        console.log(`✅ 10+ matches bonus: +2 points`);
+      } else if (count >= 5) {
+        totalBonus += 1;
+        console.log(`✅ 5+ matches bonus: +1 point`);
+      }
+
+      // Penalty for < 4 matches, but only if the month has ended
+      if (count < 4 && today > monthData.endDate) {
+        totalBonus -= 4;
+        console.log(`❌ Less than 4 matches penalty: -4 points (month ended)`);
+      } else if (count < 4) {
+        console.log(`⏳ Less than 4 matches, but month not ended yet (no penalty)`);
+      }
     });
 
-    tournamentMonths.forEach(monthKey => {
+    // All players bonus: +1 per month if all 9 players played
+    tournamentMonths.forEach(monthData => {
+      const monthKey = monthData.key;
       const monthMatches = matchesByMonth[monthKey] || [];
       if (monthMatches.length > 0) {
         const uniquePlayers = new Set();
@@ -588,11 +671,14 @@ const App = () => {
         const teamPlayers = players.filter(p => p.teamId === teamId && p.status === 'active');
         if (teamPlayers.length === 9 && uniquePlayers.size === 9) {
           totalBonus += 1;
+          console.log(`✅ All 9 players played in ${monthData.name}: +1 point`);
         }
       }
     });
 
-    tournamentMonths.forEach(monthKey => {
+    // Multiple opponents bonus: +1 per month if played 3+ different teams
+    tournamentMonths.forEach(monthData => {
+      const monthKey = monthData.key;
       const monthMatches = matchesByMonth[monthKey] || [];
       const opponentTeams = new Set();
       monthMatches.forEach(match => {
@@ -601,10 +687,13 @@ const App = () => {
       });
       if (opponentTeams.size >= 3) {
         totalBonus += 1;
+        console.log(`✅ Played 3+ opponents in ${monthData.name}: +1 point (${opponentTeams.size} opponents)`);
       }
     });
 
-    tournamentMonths.forEach(monthKey => {
+    // Multiple levels bonus: +1 per month if played 3+ different levels
+    tournamentMonths.forEach(monthData => {
+      const monthKey = monthData.key;
       const monthMatches = matchesByMonth[monthKey] || [];
       const levels = new Set();
       monthMatches.forEach(match => {
@@ -612,10 +701,13 @@ const App = () => {
       });
       if (levels.size >= 3) {
         totalBonus += 1;
+        console.log(`✅ Played 3+ levels in ${monthData.name}: +1 point (${Array.from(levels).join(', ')})`);
       }
     });
 
-    tournamentMonths.forEach(monthKey => {
+    // Mixed doubles bonus: +1 per month if played 2+ mixed doubles matches
+    tournamentMonths.forEach(monthData => {
+      const monthKey = monthData.key;
       const monthMatches = matchesByMonth[monthKey] || [];
       let mixedDoublesCount = 0;
 
@@ -638,20 +730,41 @@ const App = () => {
 
       if (mixedDoublesCount >= 2) {
         totalBonus += 1;
+        console.log(`✅ Played 2+ mixed doubles in ${monthData.name}: +1 point (${mixedDoublesCount} matches)`);
       }
     });
 
-    bonusEntries.filter(b => b.teamId === teamId).forEach(bonus => {
-      totalBonus += bonus.points;
-    });
+    // Manual bonus entries
+    const manualBonuses = bonusEntries.filter(b => b.teamId === teamId);
+    if (manualBonuses.length > 0) {
+      console.log('\n--- Manual Bonuses ---');
+      manualBonuses.forEach(bonus => {
+        totalBonus += bonus.points;
+        console.log(`✅ Manual bonus: +${bonus.points} points (${bonus.description || 'No description'})`);
+      });
+    }
 
+    // Uniform and practice bonuses
     if (team && team.bonuses) {
+      console.log('\n--- Team Bonuses ---');
+
       const uniformBonus = getUniformBonus(team.bonuses.uniformType, team.bonuses.uniformPhotoSubmitted);
-      totalBonus += uniformBonus;
+      if (uniformBonus > 0) {
+        totalBonus += uniformBonus;
+        console.log(`✅ Uniform bonus (${team.bonuses.uniformType}): +${uniformBonus} points`);
+      }
 
       const practiceBonus = getPracticeBonus(team.bonuses.practices);
-      totalBonus += practiceBonus;
+      if (practiceBonus > 0) {
+        totalBonus += practiceBonus;
+        console.log(`✅ Practice bonus (capped at 4): +${practiceBonus} points`);
+      }
     }
+
+    console.log('\n--- BONUS SUMMARY ---');
+    console.log(`Total Uncapped Bonus: ${totalBonus} points`);
+    console.log(`Minimum Bonus (after penalties): ${Math.max(0, totalBonus)} points`);
+    console.log('=======================\n');
 
     return Math.max(0, totalBonus);
   };
@@ -696,6 +809,15 @@ const App = () => {
 
     const bonusPoints = calculateBonusPoints(teamId);
     const cappedBonus = Math.min(bonusPoints, matchWinPoints * 0.25);
+
+    console.log('=== TEAM POINTS CALCULATION ===');
+    console.log('Team ID:', teamId);
+    console.log('Match Win Points:', matchWinPoints);
+    console.log('Uncapped Bonus Points:', bonusPoints);
+    console.log('25% Cap Amount:', matchWinPoints * 0.25);
+    console.log('Capped Bonus Points:', cappedBonus);
+    console.log('Total Points:', matchWinPoints + cappedBonus);
+    console.log('===============================\n');
 
     return {
       matchWinPoints,
@@ -840,11 +962,29 @@ const App = () => {
             />
           )}
 
+          {activeTab === 'challenges' && (
+            <ChallengeManagement
+              teams={teams}
+              players={players}
+              matches={matches}
+              challenges={challenges}
+              captains={captains}
+              onChallengesChange={setChallenges}
+              onMatchesChange={setMatches}
+              isAuthenticated={isAuthenticated}
+              userRole={userRole}
+              userTeamId={userTeamId}
+              loginName={loginName}
+            />
+          )}
+
           {activeTab === 'entry' && (
             <MatchEntry
               teams={teams}
               matches={matches}
               setMatches={setMatches}
+              challenges={challenges}
+              onChallengesChange={setChallenges}
               isAuthenticated={isAuthenticated}
               setActiveTab={setActiveTab}
               players={players}
@@ -859,20 +999,34 @@ const App = () => {
             />
           )}
 
-          {activeTab === 'matches' && (
-            <MatchHistory
-              matches={matches}
-              setMatches={setMatches}
-              teams={teams}
-              isAuthenticated={isAuthenticated}
-              setActiveTab={setActiveTab}
-              players={players}
-              userRole={userRole}
-              userTeamId={userTeamId}
-              setEditingMatch={setEditingMatch}
-              addLog={addLog}
-            />
-          )}
+          {activeTab === 'matches' && (() => {
+            console.log('=== APP.JSX: Rendering MatchHistory ===');
+            console.log('Passing challenges to MatchHistory:', challenges?.length || 0);
+            console.log('Challenges state:', challenges);
+            return (
+              <MatchHistory
+                matches={matches}
+                setMatches={setMatches}
+                teams={teams}
+                isAuthenticated={isAuthenticated}
+                setActiveTab={setActiveTab}
+                players={players}
+                userRole={userRole}
+                userTeamId={userTeamId}
+                setEditingMatch={setEditingMatch}
+                challenges={challenges}
+                onEnterPendingResults={(challenge) => {
+                  console.log('=== Enter Pending Results Clicked ===');
+                  console.log('Challenge:', challenge);
+                  // Set editing match with pending challenge data
+                  setEditingMatch({ ...challenge, isPendingMatch: true });
+                  // Switch to entry tab
+                  setActiveTab('entry');
+                }}
+                addLog={addLog}
+              />
+            );
+          })()}
 
           {activeTab === 'media' && (
             <MediaGallery
