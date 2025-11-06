@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Upload, X, ChevronLeft, ChevronRight, Trash2, Image as ImageIcon, Filter } from 'lucide-react';
+import { formatDate } from '../utils/formatters';
 
 const MediaGallery = ({
   photos,
@@ -236,16 +237,6 @@ const MediaGallery = ({
   const getTeamName = (teamId) => {
     const team = teams.find(t => t.id === teamId);
     return team ? team.name : 'Unknown Team';
-  };
-
-  // Format date
-  const formatDate = (dateString) => {
-    if (!dateString) return '';
-    return new Date(dateString).toLocaleDateString('en-US', {
-      month: '2-digit',
-      day: '2-digit',
-      year: 'numeric'
-    });
   };
 
   // Get photo display info

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
+import { formatDate } from '../utils/formatters';
 import TeamLogo from './TeamLogo';
 
 const MatchPhotos = ({ photos, teams, isAuthenticated, onDeletePhoto }) => {
@@ -45,14 +46,6 @@ const MatchPhotos = ({ photos, teams, isAuthenticated, onDeletePhoto }) => {
   const getTeamName = (teamId) => {
     const team = getTeam(teamId);
     return team ? team.name : 'Unknown Team';
-  };
-
-  const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      month: '2-digit',
-      day: '2-digit',
-      year: 'numeric'
-    });
   };
 
   const formatMatchScore = (photo) => {

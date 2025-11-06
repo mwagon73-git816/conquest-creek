@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, X, Check, Calendar, Users, Swords, Trophy, Clock, AlertCircle, Trash2 } from 'lucide-react';
+import { Plus, X, Check, Calendar, Users, Swords, Trophy, Clock, AlertCircle, Trash2, Edit2 } from 'lucide-react';
+import { ACTION_TYPES, createLogEntry } from '../services/activityLogger';
+import { formatDate } from '../utils/formatters';
 
 export default function ChallengeManagement({
   teams,
@@ -12,12 +14,15 @@ export default function ChallengeManagement({
   isAuthenticated,
   userRole,
   userTeamId,
-  loginName
+  loginName,
+  addLog
 }) {
   // Form states
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [showAcceptForm, setShowAcceptForm] = useState(false);
+  const [showEditForm, setShowEditForm] = useState(false);
   const [selectedChallenge, setSelectedChallenge] = useState(null);
+  const [editingChallenge, setEditingChallenge] = useState(null);
 
   // Challenge creation form
   const [createFormData, setCreateFormData] = useState({
@@ -32,6 +37,14 @@ export default function ChallengeManagement({
   const [acceptFormData, setAcceptFormData] = useState({
     acceptedDate: '',
     acceptedLevel: '7.0',
+    selectedPlayers: [],
+    notes: ''
+  });
+
+  // Challenge edit form
+  const [editFormData, setEditFormData] = useState({
+    proposedDate: '',
+    proposedLevel: '7.0',
     selectedPlayers: [],
     notes: ''
   });
@@ -222,6 +235,92 @@ export default function ChallengeManagement({
     alert('✅ Challenge deleted successfully.\n\n⚠️ IMPORTANT: Click the "Save Data" button to save this to the database.');
   };
 
+  // Handle edit challenge
+  const handleEditChallenge = (challenge) => {
+    setEditingChallenge(challenge);
+    setEditFormData({
+      proposedDate: challenge.proposedDate || '',
+      proposedLevel: challenge.proposedLevel,
+      selectedPlayers: challenge.challengerPlayers,
+      notes: challenge.notes || ''
+    });
+    setShowEditForm(true);
+  };
+
+  const handleConfirmEdit = () => {
+    // Validation
+    if (!validatePlayerSelection(editFormData.selectedPlayers)) {
+      alert('⚠️ Please select exactly 2 players.');
+      return;
+    }
+
+    if (!validateCombinedNTRP(editFormData.selectedPlayers, editFormData.proposedLevel)) {
+      const combinedRating = calculateCombinedNTRP(editFormData.selectedPlayers);
+      alert(`Combined NTRP rating (${combinedRating.toFixed(1)}) exceeds match level (${editFormData.proposedLevel}). Please select different players or change the match level.`);
+      return;
+    }
+
+    // Track what changed for activity log
+    const changes = [];
+    if (editFormData.proposedDate !== (editingChallenge.proposedDate || '')) {
+      changes.push('date');
+    }
+    if (editFormData.proposedLevel !== editingChallenge.proposedLevel) {
+      changes.push('level');
+    }
+    if (JSON.stringify(editFormData.selectedPlayers.sort()) !== JSON.stringify(editingChallenge.challengerPlayers.sort())) {
+      changes.push('players');
+    }
+    if (editFormData.notes !== (editingChallenge.notes || '')) {
+      changes.push('notes');
+    }
+
+    // Update challenge
+    const updatedChallenge = {
+      ...editingChallenge,
+      proposedDate: editFormData.proposedDate || null,
+      proposedLevel: editFormData.proposedLevel,
+      challengerPlayers: editFormData.selectedPlayers,
+      combinedNTRP: calculateCombinedNTRP(editFormData.selectedPlayers),
+      notes: editFormData.notes,
+      lastEditedBy: getUserInfo()?.name || 'Unknown',
+      lastEditedAt: new Date().toISOString()
+    };
+
+    const updatedChallenges = challenges.map(c =>
+      c.id === editingChallenge.id ? updatedChallenge : c
+    );
+
+    onChallengesChange(updatedChallenges);
+
+    // Log the edit activity
+    if (addLog && changes.length > 0) {
+      addLog(
+        ACTION_TYPES.CHALLENGE_EDITED,
+        {
+          challengerTeam: getTeamName(editingChallenge.challengerTeamId),
+          level: editFormData.proposedLevel,
+          changesSummary: `Updated ${changes.join(', ')}`
+        },
+        editingChallenge.id,
+        editingChallenge,
+        updatedChallenge
+      );
+    }
+
+    // Reset form
+    setShowEditForm(false);
+    setEditingChallenge(null);
+    setEditFormData({
+      proposedDate: '',
+      proposedLevel: '7.0',
+      selectedPlayers: [],
+      notes: ''
+    });
+
+    alert('✅ Challenge updated successfully!\n\n⚠️ IMPORTANT: Click the "Save Data" button to save this to the database.');
+  };
+
   // Helper function to get team name
   const getTeamName = (teamId) => {
     const team = teams.find(t => t.id === teamId);
@@ -260,10 +359,18 @@ export default function ChallengeManagement({
     return false;
   };
 
-  // Format date for display
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  // Check if user can edit a specific challenge
+  const canEditChallenge = (challenge) => {
+    if (!isAuthenticated) return false;
+    if (challenge.status !== 'open') return false; // Can only edit open challenges
+
+    // Directors can edit any challenge
+    if (userRole === 'director') return true;
+
+    // Captains can only edit challenges their team created
+    if (userRole === 'captain' && userTeamId === challenge.challengerTeamId) return true;
+
+    return false;
   };
 
   const levels = ['6.0', '6.5', '7.0', '7.5', '8.0', '8.5', '9.0', '9.5', '10.0'];
@@ -521,7 +628,7 @@ export default function ChallengeManagement({
                       {challenge.proposedDate && (
                         <div className="flex items-center gap-2">
                           <Calendar className="w-4 h-4" />
-                          <span>Proposed: {formatDate(challenge.proposedDate)}</span>
+                          <span>Proposed Match Date: {formatDate(challenge.proposedDate)}</span>
                         </div>
                       )}
                       <div className="flex items-center gap-2">
@@ -548,8 +655,20 @@ export default function ChallengeManagement({
                   </div>
 
                   {/* Action Buttons */}
-                  <div className="ml-4">
-                    {/* Directors: Show Delete button only */}
+                  <div className="ml-4 flex gap-2">
+                    {/* Edit button (directors and captains who own the challenge) */}
+                    {canEditChallenge(challenge) && (
+                      <button
+                        onClick={() => handleEditChallenge(challenge)}
+                        className="flex items-center gap-1 bg-blue-600 text-white px-3 py-1.5 rounded hover:bg-blue-700 transition-colors text-sm font-medium"
+                        title="Edit this challenge"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                        Edit
+                      </button>
+                    )}
+
+                    {/* Directors: Show Delete button */}
                     {userRole === 'director' && (
                       <button
                         onClick={() => handleDeleteChallenge(challenge)}
@@ -572,7 +691,7 @@ export default function ChallengeManagement({
                       </button>
                     )}
 
-                    {/* Public viewers and captains viewing their own challenge: No buttons */}
+                    {/* Public viewers: No buttons */}
                   </div>
                 </div>
               </div>
@@ -580,6 +699,156 @@ export default function ChallengeManagement({
           )}
         </div>
       </div>
+
+      {/* Edit Challenge Modal */}
+      {showEditForm && editingChallenge && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h3 className="text-xl font-bold text-gray-900">Edit Challenge</h3>
+              <p className="text-sm text-gray-600 mt-1">
+                Challenging Team: {getTeamName(editingChallenge.challengerTeamId)}
+              </p>
+            </div>
+
+            <div className="px-6 py-4 space-y-4">
+              {/* Proposed Date */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Proposed Date (Optional)
+                </label>
+                <input
+                  type="date"
+                  value={editFormData.proposedDate}
+                  onChange={(e) => setEditFormData({...editFormData, proposedDate: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              {/* Level */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Level
+                </label>
+                <select
+                  value={editFormData.proposedLevel}
+                  onChange={(e) => setEditFormData({...editFormData, proposedLevel: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {levels.map(level => (
+                    <option key={level} value={level}>{level}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Player Selection */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Select 2 Players *
+                </label>
+                <div className="border border-gray-300 rounded p-4 max-h-48 overflow-y-auto space-y-2">
+                  {(() => {
+                    const roster = getTeamRoster(editingChallenge.challengerTeamId);
+
+                    if (roster.length === 0) {
+                      return (
+                        <p className="text-sm text-gray-500 text-center py-4">
+                          No active players on this team
+                        </p>
+                      );
+                    }
+
+                    return roster.map(player => (
+                      <label key={player.id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
+                        <input
+                          type="checkbox"
+                          checked={editFormData.selectedPlayers.includes(player.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              // Limit to 2 players
+                              if (editFormData.selectedPlayers.length >= 2) {
+                                alert('⚠️ You can only select 2 players for doubles.');
+                                return;
+                              }
+                              setEditFormData({
+                                ...editFormData,
+                                selectedPlayers: [...editFormData.selectedPlayers, player.id]
+                              });
+                            } else {
+                              setEditFormData({
+                                ...editFormData,
+                                selectedPlayers: editFormData.selectedPlayers.filter(id => id !== player.id)
+                              });
+                            }
+                          }}
+                          className="rounded"
+                        />
+                        <span className="text-sm">
+                          {player.firstName} {player.lastName}
+                          <span className="text-gray-500 ml-2">
+                            ({player.gender}) {player.ntrpRating} NTRP
+                          </span>
+                        </span>
+                      </label>
+                    ));
+                  })()}
+                </div>
+                <div className="mt-2 space-y-1">
+                  <p className="text-sm text-gray-600">
+                    Selected: {editFormData.selectedPlayers.length} / 2 players
+                  </p>
+                  {editFormData.selectedPlayers.length === 2 && (
+                    <div className={`text-sm font-medium ${
+                      validateCombinedNTRP(editFormData.selectedPlayers, editFormData.proposedLevel)
+                        ? 'text-green-600'
+                        : 'text-red-600'
+                    }`}>
+                      Combined NTRP: {calculateCombinedNTRP(editFormData.selectedPlayers).toFixed(1)}
+                      {!validateCombinedNTRP(editFormData.selectedPlayers, editFormData.proposedLevel) && (
+                        <span className="block text-xs mt-0.5">
+                          ⚠️ Exceeds match level ({editFormData.proposedLevel})
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Notes (Optional)
+                </label>
+                <textarea
+                  value={editFormData.notes}
+                  onChange={(e) => setEditFormData({...editFormData, notes: e.target.value})}
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Propose dates/times, court preferences, or match details..."
+                />
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t border-gray-200 flex gap-3">
+              <button
+                onClick={handleConfirmEdit}
+                className="flex-1 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors font-medium"
+              >
+                Save Changes
+              </button>
+              <button
+                onClick={() => {
+                  setShowEditForm(false);
+                  setEditingChallenge(null);
+                }}
+                className="px-4 py-2 border border-gray-300 rounded hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Accept Challenge Modal */}
       {showAcceptForm && selectedChallenge && (

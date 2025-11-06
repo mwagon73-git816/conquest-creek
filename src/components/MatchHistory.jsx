@@ -1,13 +1,24 @@
 import React, { useState } from 'react';
-import { TrendingUp, Edit, Trash2, ChevronDown, ChevronUp, Filter, Clock, Calendar, Check } from 'lucide-react';
-import { formatNTRP, formatDynamic } from '../utils/formatters';
+import { TrendingUp, Edit, Trash2, ChevronDown, ChevronUp, Filter, Clock, Calendar, Check, Edit2, X } from 'lucide-react';
+import { formatNTRP, formatDynamic, formatDate } from '../utils/formatters';
+import { ACTION_TYPES, createLogEntry } from '../services/activityLogger';
 import TeamLogo from './TeamLogo';
 
-const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTab, players, userRole, userTeamId, setEditingMatch, challenges, onEnterPendingResults }) => {
+const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTab, players, userRole, userTeamId, setEditingMatch, challenges, onEnterPendingResults, onChallengesChange, addLog }) => {
   const [showFilters, setShowFilters] = useState(false);
   const [selectedTeams, setSelectedTeams] = useState([]);
   const [selectedPlayers, setSelectedPlayers] = useState([]);
   const [matchStatusFilter, setMatchStatusFilter] = useState('all'); // 'all', 'pending', 'completed'
+
+  // Edit pending match states
+  const [showEditPendingModal, setShowEditPendingModal] = useState(false);
+  const [editingPendingMatch, setEditingPendingMatch] = useState(null);
+  const [editPendingFormData, setEditPendingFormData] = useState({
+    acceptedDate: '',
+    acceptedLevel: '7.0',
+    team1Players: [],
+    team2Players: []
+  });
 
   // Debug: Log component props on mount and when challenges change
   React.useEffect(() => {
@@ -35,15 +46,6 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
     if (confirm('Delete this match?')) {
       setMatches(matches.filter(m => m.id !== matchId));
     }
-  };
-
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { 
-      month: '2-digit', 
-      day: '2-digit', 
-      year: 'numeric' 
-    });
   };
 
   const getPlayerName = (playerId) => {
@@ -158,6 +160,149 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
              pendingMatch.challengedTeamId === userTeamId;
     }
     return false;
+  };
+
+  // Check if user can edit a pending match
+  const canEditPendingMatch = (pendingMatch) => {
+    if (!isAuthenticated) return false;
+    // Directors can edit any pending match
+    if (userRole === 'director') return true;
+    // Captains can edit pending matches their team is involved in
+    if (userRole === 'captain' && userTeamId) {
+      return pendingMatch.challengerTeamId === userTeamId || pendingMatch.challengedTeamId === userTeamId;
+    }
+    return false;
+  };
+
+  // Get team roster for player selection
+  const getTeamRoster = (teamId) => {
+    return players.filter(p => p.teamId === teamId && p.status === 'active');
+  };
+
+  // Calculate combined NTRP rating for selected players
+  const calculateCombinedNTRP = (selectedPlayerIds) => {
+    if (selectedPlayerIds.length !== 2) return 0;
+    const player1 = players.find(p => p.id === selectedPlayerIds[0]);
+    const player2 = players.find(p => p.id === selectedPlayerIds[1]);
+    if (!player1 || !player2) return 0;
+    return parseFloat(player1.ntrpRating) + parseFloat(player2.ntrpRating);
+  };
+
+  // Validation: exactly 2 players must be selected
+  const validatePlayerSelection = (selectedPlayers) => {
+    return selectedPlayers.length === 2;
+  };
+
+  // Validation: combined NTRP doesn't exceed match level
+  const validateCombinedNTRP = (selectedPlayers, matchLevel) => {
+    if (selectedPlayers.length !== 2) return false;
+    const combinedRating = calculateCombinedNTRP(selectedPlayers);
+    return combinedRating <= parseFloat(matchLevel);
+  };
+
+  // Handle edit pending match
+  const handleEditPendingMatch = (pendingMatch) => {
+    setEditingPendingMatch(pendingMatch);
+    setEditPendingFormData({
+      acceptedDate: pendingMatch.acceptedDate || '',
+      acceptedLevel: pendingMatch.acceptedLevel || pendingMatch.proposedLevel,
+      team1Players: pendingMatch.challengerPlayers || [],
+      team2Players: pendingMatch.challengedPlayers || []
+    });
+    setShowEditPendingModal(true);
+  };
+
+  const handleConfirmEditPending = () => {
+    // Validation
+    if (!editPendingFormData.acceptedDate) {
+      alert('⚠️ Please select a match date.');
+      return;
+    }
+
+    if (!validatePlayerSelection(editPendingFormData.team1Players)) {
+      alert('⚠️ Please select exactly 2 players for Team 1.');
+      return;
+    }
+
+    if (!validatePlayerSelection(editPendingFormData.team2Players)) {
+      alert('⚠️ Please select exactly 2 players for Team 2.');
+      return;
+    }
+
+    if (!validateCombinedNTRP(editPendingFormData.team1Players, editPendingFormData.acceptedLevel)) {
+      const combinedRating = calculateCombinedNTRP(editPendingFormData.team1Players);
+      alert(`Team 1 combined NTRP rating (${combinedRating.toFixed(1)}) exceeds match level (${editPendingFormData.acceptedLevel}).`);
+      return;
+    }
+
+    if (!validateCombinedNTRP(editPendingFormData.team2Players, editPendingFormData.acceptedLevel)) {
+      const combinedRating = calculateCombinedNTRP(editPendingFormData.team2Players);
+      alert(`Team 2 combined NTRP rating (${combinedRating.toFixed(1)}) exceeds match level (${editPendingFormData.acceptedLevel}).`);
+      return;
+    }
+
+    // Track what changed for activity log
+    const changes = [];
+    if (editPendingFormData.acceptedDate !== editingPendingMatch.acceptedDate) {
+      changes.push('date');
+    }
+    if (editPendingFormData.acceptedLevel !== (editingPendingMatch.acceptedLevel || editingPendingMatch.proposedLevel)) {
+      changes.push('level');
+    }
+    if (JSON.stringify(editPendingFormData.team1Players.sort()) !== JSON.stringify((editingPendingMatch.challengerPlayers || []).sort())) {
+      changes.push('team1 players');
+    }
+    if (JSON.stringify(editPendingFormData.team2Players.sort()) !== JSON.stringify((editingPendingMatch.challengedPlayers || []).sort())) {
+      changes.push('team2 players');
+    }
+
+    // Update pending match (which is an accepted challenge)
+    const updatedChallenge = {
+      ...editingPendingMatch,
+      acceptedDate: editPendingFormData.acceptedDate,
+      acceptedLevel: editPendingFormData.acceptedLevel,
+      challengerPlayers: editPendingFormData.team1Players,
+      challengedPlayers: editPendingFormData.team2Players,
+      challengedCombinedNTRP: calculateCombinedNTRP(editPendingFormData.team2Players),
+      combinedNTRP: calculateCombinedNTRP(editPendingFormData.team1Players),
+      lastEditedBy: userRole === 'director' ? 'Tournament Director' : 'Captain',
+      lastEditedAt: new Date().toISOString()
+    };
+
+    const updatedChallenges = challenges.map(c =>
+      c.id === editingPendingMatch.id ? updatedChallenge : c
+    );
+
+    onChallengesChange(updatedChallenges);
+
+    // Log the edit activity
+    if (addLog && changes.length > 0) {
+      const team1Name = getTeamName(editingPendingMatch.challengerTeamId);
+      const team2Name = getTeamName(editingPendingMatch.challengedTeamId);
+      addLog(
+        ACTION_TYPES.PENDING_MATCH_EDITED,
+        {
+          team1Name,
+          team2Name,
+          changesSummary: `Updated ${changes.join(', ')}`
+        },
+        editingPendingMatch.id,
+        editingPendingMatch,
+        updatedChallenge
+      );
+    }
+
+    // Reset form
+    setShowEditPendingModal(false);
+    setEditingPendingMatch(null);
+    setEditPendingFormData({
+      acceptedDate: '',
+      acceptedLevel: '7.0',
+      team1Players: [],
+      team2Players: []
+    });
+
+    alert('✅ Pending match updated successfully!\n\n⚠️ IMPORTANT: Click the "Save Data" button to save this to the database.');
   };
 
   // Sort matches by date (newest first), then by timestamp if available
@@ -539,16 +684,31 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
                         )}
                       </div>
 
-                      {/* Enter Results Button */}
-                      {canEnterResults(challenge) && onEnterPendingResults && (
-                        <button
-                          onClick={() => onEnterPendingResults(challenge)}
-                          className="ml-4 flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition-colors font-medium whitespace-nowrap"
-                        >
-                          <Check className="w-4 h-4" />
-                          Enter Results
-                        </button>
-                      )}
+                      {/* Action Buttons */}
+                      <div className="ml-4 flex gap-2">
+                        {/* Edit Button */}
+                        {canEditPendingMatch(challenge) && (
+                          <button
+                            onClick={() => handleEditPendingMatch(challenge)}
+                            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors font-medium whitespace-nowrap"
+                            title="Edit this pending match"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                            Edit
+                          </button>
+                        )}
+
+                        {/* Enter Results Button */}
+                        {canEnterResults(challenge) && onEnterPendingResults && (
+                          <button
+                            onClick={() => onEnterPendingResults(challenge)}
+                            className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition-colors font-medium whitespace-nowrap"
+                          >
+                            <Check className="w-4 h-4" />
+                            Enter Results
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );
@@ -672,6 +832,192 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
             </div>
           )}
         </section>
+      )}
+
+      {/* Edit Pending Match Modal */}
+      {showEditPendingModal && editingPendingMatch && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h3 className="text-xl font-bold text-gray-900">Edit Pending Match</h3>
+              <p className="text-sm text-gray-600 mt-1">
+                {getTeamName(editingPendingMatch.challengerTeamId)} vs {getTeamName(editingPendingMatch.challengedTeamId)}
+              </p>
+            </div>
+
+            <div className="px-6 py-4 space-y-4">
+              {/* Match Date */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Match Date *
+                </label>
+                <input
+                  type="date"
+                  value={editPendingFormData.acceptedDate}
+                  onChange={(e) => setEditPendingFormData({...editPendingFormData, acceptedDate: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              {/* Level */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Match Level
+                </label>
+                <select
+                  value={editPendingFormData.acceptedLevel}
+                  onChange={(e) => setEditPendingFormData({...editPendingFormData, acceptedLevel: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {['6.0', '6.5', '7.0', '7.5', '8.0', '8.5', '9.0', '9.5', '10.0'].map(level => (
+                    <option key={level} value={level}>{level}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Two-column player selection */}
+              <div className="grid grid-cols-2 gap-4">
+                {/* Team 1 Players */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    {getTeamName(editingPendingMatch.challengerTeamId)} Players (Select 2) *
+                  </label>
+                  <div className="border border-gray-300 rounded p-4 max-h-48 overflow-y-auto space-y-2">
+                    {getTeamRoster(editingPendingMatch.challengerTeamId).map(player => (
+                      <label key={player.id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
+                        <input
+                          type="checkbox"
+                          checked={editPendingFormData.team1Players.includes(player.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              if (editPendingFormData.team1Players.length >= 2) {
+                                alert('⚠️ You can only select 2 players for doubles.');
+                                return;
+                              }
+                              setEditPendingFormData({
+                                ...editPendingFormData,
+                                team1Players: [...editPendingFormData.team1Players, player.id]
+                              });
+                            } else {
+                              setEditPendingFormData({
+                                ...editPendingFormData,
+                                team1Players: editPendingFormData.team1Players.filter(id => id !== player.id)
+                              });
+                            }
+                          }}
+                          className="rounded"
+                        />
+                        <span className="text-sm">
+                          {player.firstName} {player.lastName}
+                          <span className="text-gray-500 ml-2">
+                            ({player.gender}) {player.ntrpRating} NTRP
+                          </span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                  <div className="mt-2 space-y-1">
+                    <p className="text-sm text-gray-600">
+                      Selected: {editPendingFormData.team1Players.length} / 2 players
+                    </p>
+                    {editPendingFormData.team1Players.length === 2 && (
+                      <div className={`text-sm font-medium ${
+                        validateCombinedNTRP(editPendingFormData.team1Players, editPendingFormData.acceptedLevel)
+                          ? 'text-green-600'
+                          : 'text-red-600'
+                      }`}>
+                        Combined NTRP: {calculateCombinedNTRP(editPendingFormData.team1Players).toFixed(1)}
+                        {!validateCombinedNTRP(editPendingFormData.team1Players, editPendingFormData.acceptedLevel) && (
+                          <span className="block text-xs mt-0.5">
+                            ⚠️ Exceeds match level ({editPendingFormData.acceptedLevel})
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Team 2 Players */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    {getTeamName(editingPendingMatch.challengedTeamId)} Players (Select 2) *
+                  </label>
+                  <div className="border border-gray-300 rounded p-4 max-h-48 overflow-y-auto space-y-2">
+                    {getTeamRoster(editingPendingMatch.challengedTeamId).map(player => (
+                      <label key={player.id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
+                        <input
+                          type="checkbox"
+                          checked={editPendingFormData.team2Players.includes(player.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              if (editPendingFormData.team2Players.length >= 2) {
+                                alert('⚠️ You can only select 2 players for doubles.');
+                                return;
+                              }
+                              setEditPendingFormData({
+                                ...editPendingFormData,
+                                team2Players: [...editPendingFormData.team2Players, player.id]
+                              });
+                            } else {
+                              setEditPendingFormData({
+                                ...editPendingFormData,
+                                team2Players: editPendingFormData.team2Players.filter(id => id !== player.id)
+                              });
+                            }
+                          }}
+                          className="rounded"
+                        />
+                        <span className="text-sm">
+                          {player.firstName} {player.lastName}
+                          <span className="text-gray-500 ml-2">
+                            ({player.gender}) {player.ntrpRating} NTRP
+                          </span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                  <div className="mt-2 space-y-1">
+                    <p className="text-sm text-gray-600">
+                      Selected: {editPendingFormData.team2Players.length} / 2 players
+                    </p>
+                    {editPendingFormData.team2Players.length === 2 && (
+                      <div className={`text-sm font-medium ${
+                        validateCombinedNTRP(editPendingFormData.team2Players, editPendingFormData.acceptedLevel)
+                          ? 'text-green-600'
+                          : 'text-red-600'
+                      }`}>
+                        Combined NTRP: {calculateCombinedNTRP(editPendingFormData.team2Players).toFixed(1)}
+                        {!validateCombinedNTRP(editPendingFormData.team2Players, editPendingFormData.acceptedLevel) && (
+                          <span className="block text-xs mt-0.5">
+                            ⚠️ Exceeds match level ({editPendingFormData.acceptedLevel})
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t border-gray-200 flex gap-3">
+              <button
+                onClick={handleConfirmEditPending}
+                className="flex-1 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors font-medium"
+              >
+                Save Changes
+              </button>
+              <button
+                onClick={() => {
+                  setShowEditPendingModal(false);
+                  setEditingPendingMatch(null);
+                }}
+                className="px-4 py-2 border border-gray-300 rounded hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

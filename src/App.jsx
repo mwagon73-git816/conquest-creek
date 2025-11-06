@@ -975,6 +975,7 @@ const App = () => {
               userRole={userRole}
               userTeamId={userTeamId}
               loginName={loginName}
+              addLog={addLog}
             />
           )}
 
@@ -1015,6 +1016,7 @@ const App = () => {
                 userTeamId={userTeamId}
                 setEditingMatch={setEditingMatch}
                 challenges={challenges}
+                onChallengesChange={setChallenges}
                 onEnterPendingResults={(challenge) => {
                   console.log('=== Enter Pending Results Clicked ===');
                   console.log('Challenge:', challenge);

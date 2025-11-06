@@ -20,6 +20,13 @@ export const ACTION_TYPES = {
   MATCH_EDITED: 'match_edited',
   MATCH_DELETED: 'match_deleted',
 
+  // Challenge actions
+  CHALLENGE_CREATED: 'challenge_created',
+  CHALLENGE_EDITED: 'challenge_edited',
+  CHALLENGE_ACCEPTED: 'challenge_accepted',
+  CHALLENGE_DELETED: 'challenge_deleted',
+  PENDING_MATCH_EDITED: 'pending_match_edited',
+
   // Captain actions
   CAPTAIN_CREATED: 'captain_created',
   CAPTAIN_EDITED: 'captain_edited',
@@ -135,6 +142,17 @@ const generateDescription = (logEntry) => {
     case ACTION_TYPES.MATCH_DELETED:
       return `Deleted match: ${details.team1Name} vs ${details.team2Name}`;
 
+    case ACTION_TYPES.CHALLENGE_CREATED:
+      return `Created challenge: ${details.challengerTeam} (Level ${details.level})`;
+    case ACTION_TYPES.CHALLENGE_EDITED:
+      return `Edited challenge: ${details.challengerTeam} (${details.changesSummary || 'Updated'})`;
+    case ACTION_TYPES.CHALLENGE_ACCEPTED:
+      return `Accepted challenge: ${details.challengerTeam} vs ${details.challengedTeam}`;
+    case ACTION_TYPES.CHALLENGE_DELETED:
+      return `Deleted challenge: ${details.challengerTeam}`;
+    case ACTION_TYPES.PENDING_MATCH_EDITED:
+      return `Edited pending match: ${details.team1Name} vs ${details.team2Name} (${details.changesSummary || 'Updated'})`;
+
     case ACTION_TYPES.CAPTAIN_CREATED:
       return `Created captain: ${details.captainName || 'Unknown'}`;
     case ACTION_TYPES.CAPTAIN_EDITED:
@@ -204,7 +222,12 @@ export const filterLogs = (logs, filter) => {
   const matchActions = [
     ACTION_TYPES.MATCH_CREATED,
     ACTION_TYPES.MATCH_EDITED,
-    ACTION_TYPES.MATCH_DELETED
+    ACTION_TYPES.MATCH_DELETED,
+    ACTION_TYPES.CHALLENGE_CREATED,
+    ACTION_TYPES.CHALLENGE_EDITED,
+    ACTION_TYPES.CHALLENGE_ACCEPTED,
+    ACTION_TYPES.CHALLENGE_DELETED,
+    ACTION_TYPES.PENDING_MATCH_EDITED
   ];
 
   const captainActions = [
@@ -218,6 +241,7 @@ export const filterLogs = (logs, filter) => {
     ACTION_TYPES.PLAYERS_BULK_DELETE,
     ACTION_TYPES.TEAM_DELETED,
     ACTION_TYPES.MATCH_DELETED,
+    ACTION_TYPES.CHALLENGE_DELETED,
     ACTION_TYPES.CAPTAIN_DELETED,
     ACTION_TYPES.BONUS_DELETED,
     ACTION_TYPES.PHOTO_DELETED,

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Calendar, Plus, Check, X, Upload, Image as ImageIcon, Clock, AlertCircle } from 'lucide-react';
 import { ACTION_TYPES } from '../services/activityLogger';
-import { formatNTRP, formatDynamic } from '../utils/formatters';
+import { formatNTRP, formatDynamic, formatDate } from '../utils/formatters';
 
 const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange, isAuthenticated, setActiveTab, players, captains, onAddPhoto, loginName, userRole, userTeamId, editingMatch, setEditingMatch, addLog }) => {
   const [showMatchForm, setShowMatchForm] = useState(false);
@@ -720,13 +720,6 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
         gender: player.gender
       } : null;
     }).filter(p => p !== null);
-  };
-
-  // Format date for display
-  const formatDate = (dateString) => {
-    if (!dateString) return 'TBD';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   return (
