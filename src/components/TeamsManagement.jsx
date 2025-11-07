@@ -14,6 +14,7 @@ const TeamsManagement = ({
   captains,
   setCaptains,
   isAuthenticated,
+  userRole,
   calculateTeamRatings,
   getEffectiveRating,
   addLog
@@ -415,9 +416,9 @@ const TeamsManagement = ({
           <Users className="w-6 h-6" />
           Teams Management
         </h2>
-        {isAuthenticated && !showTeamForm && (
-          <button 
-            onClick={handleAddNewTeam} 
+        {isAuthenticated && userRole === 'director' && !showTeamForm && (
+          <button
+            onClick={handleAddNewTeam}
             className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 flex items-center gap-2"
           >
             <Plus className="w-4 h-4" />
@@ -640,6 +641,14 @@ const TeamsManagement = ({
         </div>
       )}
 
+      {isAuthenticated && userRole === 'captain' && (
+        <div className="bg-blue-50 border border-blue-200 rounded p-4 mb-4">
+          <p className="text-sm text-blue-800">
+            <strong>View-Only Mode:</strong> You can view all team information, but only tournament directors can edit teams.
+          </p>
+        </div>
+      )}
+
       <div className="space-y-3">
         {teams.map(team => {
           const ratings = calculateTeamRatings(team.id);
@@ -675,17 +684,17 @@ const TeamsManagement = ({
                     </div>
                   </div>
                 </div>
-                {isAuthenticated && (
+                {isAuthenticated && userRole === 'director' && (
                   <div className="flex gap-2">
-                    <button 
+                    <button
                       onClick={() => handleEditTeam(team)}
                       className="text-blue-600 hover:text-blue-800 p-2"
                       title="Edit team"
                     >
                       <Edit className="w-5 h-5" />
                     </button>
-                    <button 
-                      onClick={() => handleDeleteTeam(team.id)} 
+                    <button
+                      onClick={() => handleDeleteTeam(team.id)}
                       className="text-red-600 hover:text-red-800 p-2"
                       title="Delete team"
                     >
@@ -748,8 +757,8 @@ const TeamsManagement = ({
                       return (
                         <div key={player.id} className="text-gray-700 flex items-center justify-between">
                           <span>{player.firstName} {player.lastName} ({player.gender} {displayRating})</span>
-                        {isAuthenticated && (
-                          <button 
+                        {isAuthenticated && userRole === 'director' && (
+                          <button
                             onClick={() => handleRemovePlayer(player.id)}
                             className="text-red-600 hover:text-red-800 ml-2"
                           >

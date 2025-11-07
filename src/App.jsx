@@ -1015,6 +1015,7 @@ const App = () => {
               captains={captains}
               setCaptains={setCaptains}
               isAuthenticated={isAuthenticated}
+              userRole={userRole}
               calculateTeamRatings={calculateTeamRatings}
               getEffectiveRating={getEffectiveRating}
               addLog={addLog}

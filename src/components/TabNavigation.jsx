@@ -4,7 +4,7 @@ import { Trophy, Users, Calendar, TrendingUp, UserPlus, Shield, Activity, Image,
 const TabNavigation = ({ activeTab, setActiveTab, userRole, isAuthenticated }) => {
   const allTabs = [
     { id: 'leaderboard', icon: Trophy, label: 'Leaderboard', roles: ['director', 'captain', ''] },
-    { id: 'teams', icon: Users, label: 'Teams', roles: ['director', ''] },
+    { id: 'teams', icon: Users, label: 'Teams', roles: ['director', 'captain', ''] },
     { id: 'players', icon: UserPlus, label: 'Players', roles: ['director', ''] },
     { id: 'captains', icon: Shield, label: 'Captains', roles: ['director'] },
     { id: 'challenges', icon: Swords, label: 'Challenges', roles: ['director', 'captain', ''] },
