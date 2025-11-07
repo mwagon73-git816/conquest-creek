@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Plus, X, Check, Calendar, Users, Swords, Trophy, Clock, AlertCircle, Trash2, Edit2 } from 'lucide-react';
 import { ACTION_TYPES, createLogEntry } from '../services/activityLogger';
 import { formatDate } from '../utils/formatters';
+import { tournamentStorage } from '../services/storage';
 
 export default function ChallengeManagement({
   teams,
@@ -170,7 +171,7 @@ export default function ChallengeManagement({
     setShowAcceptForm(true);
   };
 
-  const handleConfirmAccept = () => {
+  const handleConfirmAccept = async () => {
     if (!acceptFormData.acceptedDate) {
       alert('⚠️ Please select a match date.');
       return;
@@ -184,6 +185,37 @@ export default function ChallengeManagement({
     if (!validateCombinedNTRP(acceptFormData.selectedPlayers, acceptFormData.acceptedLevel)) {
       const combinedRating = calculateCombinedNTRP(acceptFormData.selectedPlayers);
       alert(`Combined NTRP rating (${combinedRating.toFixed(1)}) exceeds match level (${acceptFormData.acceptedLevel}). Please select different players or change the match level.`);
+      return;
+    }
+
+    // RACE CONDITION PROTECTION: Fetch fresh data to verify challenge is still open
+    try {
+      console.log('🔍 Checking if challenge is still available...');
+      const latestChallengesData = await tournamentStorage.getChallenges();
+
+      if (latestChallengesData) {
+        const latestChallenges = JSON.parse(latestChallengesData.data);
+        const latestChallenge = latestChallenges.find(c => c.id === selectedChallenge.id);
+
+        // Check if challenge still exists and is open
+        if (!latestChallenge) {
+          alert('⚠️ Challenge Not Found!\n\nThis challenge has been deleted by another user.\n\nPlease refresh the page to see current challenges.');
+          setShowAcceptForm(false);
+          return;
+        }
+
+        if (latestChallenge.status !== 'open') {
+          const acceptedBy = latestChallenge.acceptedBy || 'another team';
+          alert(`⚠️ Challenge Already Accepted!\n\nThis challenge has already been accepted by ${acceptedBy}.\n\nPlease refresh the page to see current challenges.`);
+          setShowAcceptForm(false);
+          return;
+        }
+
+        console.log('✅ Challenge is still open, proceeding with accept');
+      }
+    } catch (error) {
+      console.error('Error checking challenge status:', error);
+      alert('⚠️ Error verifying challenge status.\n\nPlease try again or refresh the page.');
       return;
     }
 

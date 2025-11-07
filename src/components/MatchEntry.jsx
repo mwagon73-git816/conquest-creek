@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Calendar, Plus, Check, X, Upload, Image as ImageIcon, Clock, AlertCircle } from 'lucide-react';
 import { ACTION_TYPES } from '../services/activityLogger';
 import { formatNTRP, formatDynamic, formatDate } from '../utils/formatters';
+import { tournamentStorage } from '../services/storage';
 
 const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange, isAuthenticated, setActiveTab, players, captains, onAddPhoto, loginName, userRole, userTeamId, editingMatch, setEditingMatch, addLog }) => {
   const [showMatchForm, setShowMatchForm] = useState(false);
@@ -317,6 +318,50 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
 
     // Determine if this is a pending match or a regular edit
     const isPendingMatch = editingMatch && editingMatch.isPendingMatch;
+
+    // RACE CONDITION PROTECTION: For pending matches, verify challenge is still accepted
+    if (isPendingMatch) {
+      try {
+        console.log('🔍 Verifying pending match challenge status...');
+        const latestChallengesData = await tournamentStorage.getChallenges();
+
+        if (latestChallengesData) {
+          const latestChallenges = JSON.parse(latestChallengesData.data);
+          const latestChallenge = latestChallenges.find(c => c.id === editingMatch.id);
+
+          // Check if challenge still exists
+          if (!latestChallenge) {
+            alert('⚠️ Challenge Not Found!\n\nThis pending match challenge has been deleted by another user.\n\nPlease refresh the page to see current pending matches.');
+            setShowMatchForm(false);
+            setEditingMatch(null);
+            return;
+          }
+
+          // Check if challenge has already been completed
+          if (latestChallenge.status === 'completed') {
+            const completedBy = latestChallenge.completedBy || 'another captain';
+            alert(`⚠️ Match Already Entered!\n\nThis match has already been entered by ${completedBy}.\n\nPlease refresh the page to see current pending matches.`);
+            setShowMatchForm(false);
+            setEditingMatch(null);
+            return;
+          }
+
+          // Check if challenge is no longer accepted (reverted to open)
+          if (latestChallenge.status !== 'accepted') {
+            alert(`⚠️ Challenge Status Changed!\n\nThis challenge is no longer accepted (status: ${latestChallenge.status}).\n\nPlease refresh the page to see current challenges.`);
+            setShowMatchForm(false);
+            setEditingMatch(null);
+            return;
+          }
+
+          console.log('✅ Challenge is still accepted, proceeding with match entry');
+        }
+      } catch (error) {
+        console.error('Error checking challenge status:', error);
+        alert('⚠️ Error verifying challenge status.\n\nPlease try again or refresh the page.');
+        return;
+      }
+    }
 
     // For pending matches, generate a NEW match ID. For edits, use existing ID.
     const matchId = (editingMatch && !isPendingMatch) ? editingMatch.id : Date.now();

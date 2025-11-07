@@ -136,8 +136,8 @@ export const tournamentStorage = {
     return await storage.get(COLLECTIONS.TEAMS);
   },
 
-  async setTeams(teams) {
-    return await storage.set(COLLECTIONS.TEAMS, teams);
+  async setTeams(teams, expectedVersion = null) {
+    return await storage.set(COLLECTIONS.TEAMS, teams, 'data', expectedVersion);
   },
 
   async getMatches() {
@@ -145,8 +145,8 @@ export const tournamentStorage = {
     return await storage.get(COLLECTIONS.MATCHES);
   },
 
-  async setMatches(matches) {
-    return await storage.set(COLLECTIONS.MATCHES, matches);
+  async setMatches(matches, expectedVersion = null) {
+    return await storage.set(COLLECTIONS.MATCHES, matches, 'data', expectedVersion);
   },
 
   async getBonuses() {
@@ -154,21 +154,46 @@ export const tournamentStorage = {
     return await storage.get(COLLECTIONS.BONUSES);
   },
 
-  async setBonuses(bonuses) {
-    return await storage.set(COLLECTIONS.BONUSES, bonuses);
+  async setBonuses(bonuses, expectedVersion = null) {
+    return await storage.set(COLLECTIONS.BONUSES, bonuses, 'data', expectedVersion);
   },
 
   async getAuthSession() {
-    const result = await storage.get(COLLECTIONS.AUTH, 'session');
-    return result ? result : null;
+    // FIXED: Use localStorage instead of Firestore to prevent session leakage
+    // Each browser maintains its own isolated session
+    try {
+      const sessionData = localStorage.getItem('cct_auth_session');
+      if (sessionData) {
+        // Return format compatible with existing code
+        return { data: sessionData };
+      }
+      return null;
+    } catch (error) {
+      console.error('Error getting auth session:', error);
+      return null;
+    }
   },
 
   async setAuthSession(session) {
-    return await storage.set(COLLECTIONS.AUTH, session, 'session');
+    // FIXED: Use localStorage instead of Firestore to prevent session leakage
+    try {
+      localStorage.setItem('cct_auth_session', JSON.stringify(session));
+      return { success: true };
+    } catch (error) {
+      console.error('Error setting auth session:', error);
+      throw error;
+    }
   },
 
   async deleteAuthSession() {
-    return await storage.delete(COLLECTIONS.AUTH, 'session');
+    // FIXED: Use localStorage instead of Firestore to prevent session leakage
+    try {
+      localStorage.removeItem('cct_auth_session');
+      return true;
+    } catch (error) {
+      console.error('Error deleting auth session:', error);
+      throw error;
+    }
   },
 
   async getPhotos() {
@@ -176,8 +201,8 @@ export const tournamentStorage = {
     return await storage.get(COLLECTIONS.PHOTOS);
   },
 
-  async setPhotos(photos) {
-    return await storage.set(COLLECTIONS.PHOTOS, photos);
+  async setPhotos(photos, expectedVersion = null) {
+    return await storage.set(COLLECTIONS.PHOTOS, photos, 'data', expectedVersion);
   },
 
   async getCaptains() {
@@ -185,16 +210,16 @@ export const tournamentStorage = {
     return await storage.get(COLLECTIONS.CAPTAINS);
   },
 
-  async setCaptains(captains) {
-    return await storage.set(COLLECTIONS.CAPTAINS, captains);
+  async setCaptains(captains, expectedVersion = null) {
+    return await storage.set(COLLECTIONS.CAPTAINS, captains, 'data', expectedVersion);
   },
 
   async getChallenges() {
     return await storage.get(COLLECTIONS.CHALLENGES);
   },
 
-  async setChallenges(challenges) {
-    return await storage.set(COLLECTIONS.CHALLENGES, challenges);
+  async setChallenges(challenges, expectedVersion = null) {
+    return await storage.set(COLLECTIONS.CHALLENGES, challenges, 'data', expectedVersion);
   },
 
   async resetAll() {

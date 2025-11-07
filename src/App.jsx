@@ -299,6 +299,7 @@ const App = () => {
       captains: captains.length,
       challenges: challenges.length
     });
+    console.log('Current data versions:', dataVersions);
 
     if (loading) {
       alert('⚠️ Please wait, data is still loading.\n\nTry again in a moment.');
@@ -307,21 +308,87 @@ const App = () => {
 
     try {
       setSaveStatus('Saving...');
+      const newVersions = {};
 
       console.log('💾 Saving teams/players/trades to Firebase...');
-      await tournamentStorage.setTeams(JSON.stringify({ players, teams, trades }));
+      const teamsResult = await tournamentStorage.setTeams(
+        JSON.stringify({ players, teams, trades }),
+        dataVersions.teams
+      );
+
+      if (teamsResult && !teamsResult.success && teamsResult.conflict) {
+        console.warn('⚠️ Conflict detected in teams data');
+        setConflictData({
+          ...teamsResult,
+          dataType: 'teams',
+          localData: { players, teams, trades }
+        });
+        setSaveStatus('❌ Conflict detected');
+        alert('⚠️ Data Conflict Detected!\n\nAnother user has modified the teams data since you loaded it.\n\nPlease refresh the page to see the latest changes, then try your edit again.');
+        return;
+      }
+      if (teamsResult?.success) newVersions.teams = teamsResult.version;
 
       console.log('💾 Saving matches to Firebase...');
-      await tournamentStorage.setMatches(JSON.stringify(matches));
+      const matchesResult = await tournamentStorage.setMatches(
+        JSON.stringify(matches),
+        dataVersions.matches
+      );
+
+      if (matchesResult && !matchesResult.success && matchesResult.conflict) {
+        console.warn('⚠️ Conflict detected in matches data');
+        setConflictData({
+          ...matchesResult,
+          dataType: 'matches',
+          localData: matches
+        });
+        setSaveStatus('❌ Conflict detected');
+        alert('⚠️ Data Conflict Detected!\n\nAnother user has modified the matches data since you loaded it.\n\nPlease refresh the page to see the latest changes, then try your edit again.');
+        return;
+      }
+      if (matchesResult?.success) newVersions.matches = matchesResult.version;
 
       console.log('💾 Saving bonuses to Firebase...');
-      await tournamentStorage.setBonuses(JSON.stringify(bonusEntries));
+      const bonusesResult = await tournamentStorage.setBonuses(
+        JSON.stringify(bonusEntries),
+        dataVersions.bonuses
+      );
+
+      if (bonusesResult && !bonusesResult.success && bonusesResult.conflict) {
+        console.warn('⚠️ Conflict detected in bonuses data');
+        setSaveStatus('❌ Conflict detected');
+        alert('⚠️ Data Conflict Detected!\n\nAnother user has modified the bonuses data since you loaded it.\n\nPlease refresh the page to see the latest changes.');
+        return;
+      }
+      if (bonusesResult?.success) newVersions.bonuses = bonusesResult.version;
 
       console.log('💾 Saving photos to Firebase...');
-      await tournamentStorage.setPhotos(JSON.stringify(photos));
+      const photosResult = await tournamentStorage.setPhotos(
+        JSON.stringify(photos),
+        dataVersions.photos
+      );
+
+      if (photosResult && !photosResult.success && photosResult.conflict) {
+        console.warn('⚠️ Conflict detected in photos data');
+        setSaveStatus('❌ Conflict detected');
+        alert('⚠️ Data Conflict Detected!\n\nAnother user has modified the photos data since you loaded it.\n\nPlease refresh the page to see the latest changes.');
+        return;
+      }
+      if (photosResult?.success) newVersions.photos = photosResult.version;
 
       console.log('💾 Saving captains to Firebase...');
-      await tournamentStorage.setCaptains(JSON.stringify(captains));
+      const captainsResult = await tournamentStorage.setCaptains(
+        JSON.stringify(captains),
+        dataVersions.captains
+      );
+
+      if (captainsResult && !captainsResult.success && captainsResult.conflict) {
+        console.warn('⚠️ Conflict detected in captains data');
+        setSaveStatus('❌ Conflict detected');
+        alert('⚠️ Data Conflict Detected!\n\nAnother user has modified the captains data since you loaded it.\n\nPlease refresh the page to see the latest changes.');
+        return;
+      }
+      if (captainsResult?.success) newVersions.captains = captainsResult.version;
 
       console.log('💾 Saving challenges to Firebase...');
       console.log('Challenges to save:', challenges.length);
@@ -330,7 +397,28 @@ const App = () => {
       const completedChallenges = challenges.filter(c => c.status === 'completed');
       console.log(`  - Accepted (pending): ${acceptedChallenges.length}`);
       console.log(`  - Completed: ${completedChallenges.length}`);
-      await tournamentStorage.setChallenges(JSON.stringify(challenges));
+
+      const challengesResult = await tournamentStorage.setChallenges(
+        JSON.stringify(challenges),
+        dataVersions.challenges
+      );
+
+      if (challengesResult && !challengesResult.success && challengesResult.conflict) {
+        console.warn('⚠️ Conflict detected in challenges data');
+        setConflictData({
+          ...challengesResult,
+          dataType: 'challenges',
+          localData: challenges
+        });
+        setSaveStatus('❌ Conflict detected');
+        alert('⚠️ Data Conflict Detected!\n\nAnother user has modified the challenges data since you loaded it.\n\nThis could mean someone accepted or modified a challenge.\n\nPlease refresh the page to see the latest changes, then try your edit again.');
+        return;
+      }
+      if (challengesResult?.success) newVersions.challenges = challengesResult.version;
+
+      // Update versions after successful save
+      setDataVersions(prev => ({ ...prev, ...newVersions }));
+      console.log('✅ Updated data versions:', newVersions);
 
       console.log('✅ All data saved successfully!');
       setSaveStatus('✅ Saved ' + new Date().toLocaleTimeString());
