@@ -86,7 +86,7 @@ const MatchPhotos = ({ photos, teams, isAuthenticated, onDeletePhoto }) => {
         {/* Photo Container */}
         <div className="relative w-full h-[300px] md:h-[400px] lg:h-[500px] bg-gray-900 flex items-center justify-center">
           <img
-            src={currentPhoto.imageData}
+            src={currentPhoto.imageUrl || currentPhoto.imageData}
             alt="Match photo"
             className="max-w-full max-h-full object-contain transition-opacity duration-500"
           />

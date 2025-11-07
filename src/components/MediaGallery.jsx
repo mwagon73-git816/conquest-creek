@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Upload, X, ChevronLeft, ChevronRight, Trash2, Image as ImageIcon, Filter } from 'lucide-react';
 import { formatDate } from '../utils/formatters';
+import { imageStorage } from '../services/storage';
 
 const MediaGallery = ({
   photos,
@@ -159,10 +160,18 @@ const MediaGallery = ({
       // Process image
       const processedImage = await processImage(uploadPreview);
 
-      // Create photo object
+      // Generate unique photo ID and storage path
+      const photoId = Date.now().toString();
+      const storagePath = `photos/${photoId}.jpg`;
+
+      // Upload to Firebase Storage
+      const imageUrl = await imageStorage.uploadImage(processedImage, storagePath);
+
+      // Create photo object with URL instead of base64
       const newPhoto = {
-        id: Date.now().toString(),
-        imageData: processedImage,
+        id: photoId,
+        imageUrl: imageUrl, // Store download URL instead of base64
+        storagePath: storagePath, // Store path for deletion
         caption: uploadCaption.trim() || null,
         team1Id: uploadTeam1Id || null,
         team2Id: uploadTeam2Id || null,
@@ -187,7 +196,7 @@ const MediaGallery = ({
       // Reset form
       handleCloseUploadModal();
     } catch (error) {
-      setUploadError('Error processing image. Please try again.');
+      setUploadError('Error uploading image. Please try again.');
       console.error('Upload error:', error);
     } finally {
       setIsProcessing(false);
@@ -226,10 +235,24 @@ const MediaGallery = ({
   };
 
   // Delete photo
-  const handleDelete = (photoId) => {
+  const handleDelete = async (photoId) => {
     if (confirm('Delete this photo? It will be removed from both the gallery and carousel.')) {
-      onDeletePhoto(photoId);
-      setLightboxOpen(false);
+      try {
+        // Find the photo to get its storage path
+        const photo = photos.find(p => p.id === photoId);
+
+        // Delete from Firebase Storage if it has a storage path
+        if (photo?.storagePath) {
+          await imageStorage.deleteImage(photo.storagePath);
+        }
+
+        // Delete from database
+        onDeletePhoto(photoId);
+        setLightboxOpen(false);
+      } catch (error) {
+        console.error('Error deleting photo:', error);
+        alert('Error deleting photo. Please try again.');
+      }
     }
   };
 
@@ -397,7 +420,7 @@ const MediaGallery = ({
               {/* Thumbnail */}
               <div className="relative aspect-square bg-gray-900">
                 <img
-                  src={photo.imageData}
+                  src={photo.imageUrl || photo.imageData}
                   alt={getPhotoInfo(photo)}
                   className="w-full h-full object-cover"
                   loading="lazy"
@@ -642,7 +665,7 @@ const MediaGallery = ({
             {/* Image Container */}
             <div className="relative w-full max-w-6xl flex-1 flex items-center justify-center">
               <img
-                src={filteredPhotos[lightboxIndex].imageData}
+                src={filteredPhotos[lightboxIndex].imageUrl || filteredPhotos[lightboxIndex].imageData}
                 alt={getPhotoInfo(filteredPhotos[lightboxIndex])}
                 className="max-w-full max-h-full object-contain"
               />

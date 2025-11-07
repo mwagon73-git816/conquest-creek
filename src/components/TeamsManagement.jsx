@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Users, Plus, Trash2, X, Award, Edit, Check, Upload, Image as ImageIcon } from 'lucide-react';
 import { ACTION_TYPES } from '../services/activityLogger';
 import { formatNTRP, formatDynamic } from '../utils/formatters';
+import { imageStorage } from '../services/storage';
 import TeamLogo from './TeamLogo';
 import LogoPreviewModal from './LogoPreviewModal';
 
@@ -25,6 +26,8 @@ const TeamsManagement = ({
     captainId: null,
     color: '#3B82F6',
     logo: null,
+    logoUrl: null,
+    logoStoragePath: null,
     logoUploadedAt: null,
     uniformType: 'none',
     uniformPhotoSubmitted: false,
@@ -44,6 +47,8 @@ const TeamsManagement = ({
       captainId: null,
       color: '#3B82F6',
       logo: null,
+      logoUrl: null,
+      logoStoragePath: null,
       logoUploadedAt: null,
       uniformType: 'none',
       uniformPhotoSubmitted: false,
@@ -62,7 +67,9 @@ const TeamsManagement = ({
       name: team.name,
       captainId: team.captainId || null,
       color: team.color,
-      logo: team.logo || null,
+      logo: team.logo || null, // Keep for backwards compatibility
+      logoUrl: team.logoUrl || null,
+      logoStoragePath: team.logoStoragePath || null,
       logoUploadedAt: team.logoUploadedAt || null,
       uniformType: team.bonuses?.uniformType || 'none',
       uniformPhotoSubmitted: team.bonuses?.uniformPhotoSubmitted || false,
@@ -72,7 +79,8 @@ const TeamsManagement = ({
         '2026-01': 0
       }
     });
-    setLogoPreview(team.logo || null);
+    // Show preview from URL or legacy base64
+    setLogoPreview(team.logoUrl || team.logo || null);
     setShowTeamForm(true);
   };
 
@@ -98,20 +106,34 @@ const TeamsManagement = ({
     reader.onload = async (e) => {
       const imageData = e.target.result;
 
-      // For SVG, store as-is
+      // For SVG, upload to Storage directly
       if (file.type === 'image/svg+xml') {
-        setTeamFormData({
-          ...teamFormData,
-          logo: imageData,
-          logoUploadedAt: new Date().toISOString()
-        });
-        setLogoPreview(imageData);
+        try {
+          // Generate storage path with team ID or timestamp
+          const logoId = editingTeam?.id || Date.now();
+          const storagePath = `logos/${logoId}.svg`;
+
+          // Upload to Firebase Storage
+          const logoUrl = await imageStorage.uploadImage(imageData, storagePath);
+
+          setTeamFormData({
+            ...teamFormData,
+            logo: null, // Clear legacy base64
+            logoUrl: logoUrl,
+            logoStoragePath: storagePath,
+            logoUploadedAt: new Date().toISOString()
+          });
+          setLogoPreview(imageData); // Keep base64 for preview
+        } catch (error) {
+          console.error('Error uploading SVG logo:', error);
+          alert('Error uploading logo. Please try again.');
+        }
         return;
       }
 
-      // For raster images, compress similar to MediaGallery
+      // For raster images, compress then upload
       const img = new Image();
-      img.onload = () => {
+      img.onload = async () => {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
 
@@ -147,12 +169,26 @@ const TeamsManagement = ({
           compressedData = canvas.toDataURL('image/jpeg', quality);
         }
 
-        setTeamFormData({
-          ...teamFormData,
-          logo: compressedData,
-          logoUploadedAt: new Date().toISOString()
-        });
-        setLogoPreview(compressedData);
+        try {
+          // Generate storage path with team ID or timestamp
+          const logoId = editingTeam?.id || Date.now();
+          const storagePath = `logos/${logoId}.jpg`;
+
+          // Upload to Firebase Storage
+          const logoUrl = await imageStorage.uploadImage(compressedData, storagePath);
+
+          setTeamFormData({
+            ...teamFormData,
+            logo: null, // Clear legacy base64
+            logoUrl: logoUrl,
+            logoStoragePath: storagePath,
+            logoUploadedAt: new Date().toISOString()
+          });
+          setLogoPreview(compressedData); // Keep base64 for preview
+        } catch (error) {
+          console.error('Error uploading logo:', error);
+          alert('Error uploading logo. Please try again.');
+        }
       };
 
       img.src = imageData;
@@ -161,14 +197,26 @@ const TeamsManagement = ({
     reader.readAsDataURL(file);
   };
 
-  const handleRemoveLogo = () => {
+  const handleRemoveLogo = async () => {
     if (confirm('Remove team logo? The team will revert to showing the color background.')) {
-      setTeamFormData({
-        ...teamFormData,
-        logo: null,
-        logoUploadedAt: null
-      });
-      setLogoPreview(null);
+      try {
+        // Delete from Firebase Storage if it has a storage path
+        if (teamFormData.logoStoragePath) {
+          await imageStorage.deleteImage(teamFormData.logoStoragePath);
+        }
+
+        setTeamFormData({
+          ...teamFormData,
+          logo: null,
+          logoUrl: null,
+          logoStoragePath: null,
+          logoUploadedAt: null
+        });
+        setLogoPreview(null);
+      } catch (error) {
+        console.error('Error removing logo:', error);
+        alert('Error removing logo. Please try again.');
+      }
     }
   };
 
@@ -200,7 +248,9 @@ const TeamsManagement = ({
       name: teamFormData.name.trim(),
       captainId: selectedCaptainId,
       color: teamFormData.color,
-      logo: teamFormData.logo || null,
+      logo: teamFormData.logo || null, // Keep for backwards compatibility
+      logoUrl: teamFormData.logoUrl || null,
+      logoStoragePath: teamFormData.logoStoragePath || null,
       logoUploadedAt: teamFormData.logoUploadedAt || null,
       bonuses: {
         uniformType: teamFormData.uniformType,

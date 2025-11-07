@@ -22,10 +22,12 @@ const TeamLogo = ({ team, size = 'md', className = '', showBorder = false, click
 
   const borderClass = showBorder ? 'border-2 border-gray-300 shadow-sm' : '';
   const sizeClass = sizeClasses[size] || sizeClasses.md;
-  const hoverClass = clickable && team?.logo ? 'cursor-pointer hover:shadow-lg hover:scale-105 transition-all duration-200' : '';
+  // Support both new logoUrl and legacy logo (base64)
+  const logoSrc = team?.logoUrl || team?.logo;
+  const hoverClass = clickable && logoSrc ? 'cursor-pointer hover:shadow-lg hover:scale-105 transition-all duration-200' : '';
 
-  // If team has a logo, display it
-  if (team?.logo) {
+  // If team has a logo (URL or base64), display it
+  if (logoSrc) {
     return (
       <div
         className={`${sizeClass} rounded overflow-hidden flex items-center justify-center ${borderClass} ${hoverClass} ${className}`}
@@ -33,7 +35,7 @@ const TeamLogo = ({ team, size = 'md', className = '', showBorder = false, click
         onClick={onClick}
       >
         <img
-          src={team.logo}
+          src={logoSrc}
           alt={`${team.name} logo`}
           className="w-full h-full object-cover"
         />
