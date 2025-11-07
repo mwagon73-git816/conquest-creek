@@ -658,8 +658,8 @@ const App = () => {
     const ratings = calculateTeamRatings(teamId);
     const totalPlayers = ratings.menCount + ratings.womenCount;
 
-    if (totalPlayers >= 9) {
-      return { allowed: false, reason: 'Team already has 9 players (maximum roster size)' };
+    if (totalPlayers >= 14) {
+      return { allowed: false, reason: 'Team already has 14 players (maximum roster size)' };
     }
 
     return { allowed: true };
@@ -745,7 +745,7 @@ const App = () => {
       }
     });
 
-    // All players bonus: +1 per month if all 9 players played
+    // All players bonus: +1 per month if all roster players played (up to 14 players)
     tournamentMonths.forEach(monthData => {
       const monthKey = monthData.key;
       const monthMatches = matchesByMonth[monthKey] || [];
@@ -757,9 +757,10 @@ const App = () => {
         });
 
         const teamPlayers = players.filter(p => p.teamId === teamId && p.status === 'active');
-        if (teamPlayers.length === 9 && uniquePlayers.size === 9) {
+        // Bonus applies if all roster players participated (works for any roster size up to 14)
+        if (teamPlayers.length > 0 && teamPlayers.length <= 14 && uniquePlayers.size === teamPlayers.length) {
           totalBonus += 1;
-          console.log(`✅ All 9 players played in ${monthData.name}: +1 point`);
+          console.log(`✅ All ${teamPlayers.length} players played in ${monthData.name}: +1 point`);
         }
       }
     });

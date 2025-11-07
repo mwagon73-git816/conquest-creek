@@ -707,7 +707,7 @@ const TeamsManagement = ({
               <div className="grid grid-cols-4 gap-3 text-sm bg-gray-50 p-3 rounded mb-3">
                 <div>
                   <div className="text-gray-600">Players</div>
-                  <div className="font-bold">{teamPlayers.length}/9</div>
+                  <div className="font-bold">{teamPlayers.length}/14</div>
                 </div>
                 <div>
                   <div className="text-gray-600">Men</div>
