@@ -11,6 +11,7 @@ const PlayerManagement = ({
   captains,
   setCaptains,
   isAuthenticated,
+  userRole,
   getEffectiveRating,
   canAddPlayerToTeam,
   addLog
@@ -26,6 +27,7 @@ const PlayerManagement = ({
     email: '',
     phone: '',
     status: 'active',
+    teamId: null,
     isCaptain: false,
     captainUsername: '',
     captainPassword: '',
@@ -195,7 +197,42 @@ const PlayerManagement = ({
       const wasCaptain = editingPlayer.isCaptain;
       const isCaptainNow = playerFormData.isCaptain;
 
-      const updatedPlayer = {...editingPlayer, ...playerData};
+      // Handle team reassignment (directors only)
+      let newTeamId = editingPlayer.teamId;
+      if (userRole === 'director' && playerFormData.teamId !== editingPlayer.teamId) {
+        const targetTeamId = playerFormData.teamId;
+
+        // Validate team reassignment
+        if (targetTeamId !== null) {
+          const check = canAddPlayerToTeam(editingPlayer, targetTeamId, true);
+          if (!check.allowed) {
+            alert(`⚠️ Cannot reassign player to team:\n\n${check.reason}`);
+            return;
+          }
+        }
+
+        newTeamId = targetTeamId;
+
+        // Log the team reassignment
+        const fromTeam = teams.find(t => t.id === editingPlayer.teamId);
+        const toTeam = teams.find(t => t.id === targetTeamId);
+        addLog(
+          ACTION_TYPES.PLAYER_REASSIGNED,
+          {
+            playerName,
+            playerId: editingPlayer.id,
+            fromTeam: fromTeam?.name || 'Unassigned',
+            toTeam: toTeam?.name || 'Unassigned',
+            fromTeamId: editingPlayer.teamId,
+            toTeamId: targetTeamId
+          },
+          editingPlayer.id,
+          { ...editingPlayer },
+          { ...editingPlayer, teamId: targetTeamId }
+        );
+      }
+
+      const updatedPlayer = {...editingPlayer, ...playerData, teamId: newTeamId};
       const after = updatedPlayer;
 
       setPlayers(players.map(p =>
@@ -328,6 +365,7 @@ const PlayerManagement = ({
       email: '',
       phone: '',
       status: 'active',
+      teamId: null,
       isCaptain: false,
       captainUsername: '',
       captainPassword: '',
@@ -363,6 +401,7 @@ const PlayerManagement = ({
       email: player.email || '',
       phone: player.phone || '',
       status: player.status,
+      teamId: player.teamId,
       isCaptain: player.isCaptain || false,
       captainUsername: player.captainUsername || linkedCaptain?.username || '',
       captainPassword: player.captainPassword || linkedCaptain?.password || '',
@@ -839,6 +878,51 @@ const PlayerManagement = ({
                 placeholder="555-123-4567"
               />
             </div>
+
+            {/* Team Assignment Section (Directors Only) */}
+            {editingPlayer && (
+              <div className="col-span-2 border-t pt-4 mt-2">
+                <label className="block text-sm font-semibold mb-1">
+                  Team Assignment
+                  {userRole !== 'director' && <span className="text-xs text-gray-500 ml-1">(Read-only)</span>}
+                </label>
+                {userRole === 'director' ? (
+                  <select
+                    value={playerFormData.teamId || ''}
+                    onChange={(e) => {
+                      const teamId = e.target.value ? parseInt(e.target.value) : null;
+                      setPlayerFormData({...playerFormData, teamId});
+                    }}
+                    className="w-full px-3 py-2 border rounded"
+                  >
+                    <option value="">Unassigned</option>
+                    {teams.map(t => {
+                      const teamPlayers = players.filter(p => p.teamId === t.id);
+                      const currentCount = teamPlayers.length;
+                      // Adjust count if editing player is already on this team
+                      const adjustedCount = editingPlayer && editingPlayer.teamId === t.id ? currentCount - 1 : currentCount;
+                      return (
+                        <option key={t.id} value={t.id}>
+                          {t.name} ({adjustedCount}/14 players)
+                        </option>
+                      );
+                    })}
+                  </select>
+                ) : (
+                  <div className="w-full px-3 py-2 border rounded bg-gray-100 text-gray-700">
+                    {playerFormData.teamId
+                      ? teams.find(t => t.id === playerFormData.teamId)?.name || 'Unknown Team'
+                      : 'Unassigned'
+                    }
+                  </div>
+                )}
+                {userRole === 'director' && (
+                  <p className="text-xs text-gray-600 mt-1">
+                    Directors can reassign players to different teams. Team capacity is 14 players maximum.
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Captain Promotion Section */}
             <div className="col-span-2 border-t pt-4 mt-2">

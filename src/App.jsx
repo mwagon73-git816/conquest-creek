@@ -650,13 +650,20 @@ const App = () => {
     };
   };
 
-  const canAddPlayerToTeam = (player, teamId) => {
-    if (player.teamId !== null) {
+  const canAddPlayerToTeam = (player, teamId, isReassignment = false) => {
+    // For reassignments, we allow moving from one team to another
+    // For initial assignments, player must not have a team
+    if (!isReassignment && player.teamId !== null) {
       return { allowed: false, reason: 'Player already on another team' };
     }
 
     const ratings = calculateTeamRatings(teamId);
-    const totalPlayers = ratings.menCount + ratings.womenCount;
+    let totalPlayers = ratings.menCount + ratings.womenCount;
+
+    // If player is already on this team, don't count them twice
+    if (player.teamId === teamId) {
+      totalPlayers -= 1;
+    }
 
     if (totalPlayers >= 14) {
       return { allowed: false, reason: 'Team already has 14 players (maximum roster size)' };
@@ -1031,6 +1038,7 @@ const App = () => {
               captains={captains}
               setCaptains={setCaptains}
               isAuthenticated={isAuthenticated}
+              userRole={userRole}
               getEffectiveRating={getEffectiveRating}
               canAddPlayerToTeam={canAddPlayerToTeam}
               addLog={addLog}

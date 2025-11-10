@@ -6,6 +6,7 @@ export const ACTION_TYPES = {
   PLAYER_ADDED: 'player_added',
   PLAYER_EDITED: 'player_edited',
   PLAYER_DELETED: 'player_deleted',
+  PLAYER_REASSIGNED: 'player_reassigned',
   PLAYERS_BULK_DELETE: 'players_bulk_delete',
 
   // Team actions
@@ -26,6 +27,7 @@ export const ACTION_TYPES = {
   CHALLENGE_ACCEPTED: 'challenge_accepted',
   CHALLENGE_DELETED: 'challenge_deleted',
   PENDING_MATCH_EDITED: 'pending_match_edited',
+  PENDING_MATCH_DELETED: 'pending_match_deleted',
 
   // Captain actions
   CAPTAIN_CREATED: 'captain_created',
@@ -121,6 +123,8 @@ const generateDescription = (logEntry) => {
       return `Edited player: ${details.playerName || 'Unknown'}`;
     case ACTION_TYPES.PLAYER_DELETED:
       return `Deleted player: ${details.playerName || 'Unknown'}`;
+    case ACTION_TYPES.PLAYER_REASSIGNED:
+      return `Reassigned ${details.playerName} from ${details.fromTeam} to ${details.toTeam}`;
     case ACTION_TYPES.PLAYERS_BULK_DELETE:
       return `Deleted all players (${details.count || 0} players)`;
 
@@ -152,6 +156,8 @@ const generateDescription = (logEntry) => {
       return `Deleted challenge: ${details.challengerTeam}`;
     case ACTION_TYPES.PENDING_MATCH_EDITED:
       return `Edited pending match: ${details.team1Name} vs ${details.team2Name} (${details.changesSummary || 'Updated'})`;
+    case ACTION_TYPES.PENDING_MATCH_DELETED:
+      return `Deleted pending match: ${details.matchDescription || `${details.team1Name} vs ${details.team2Name}`}`;
 
     case ACTION_TYPES.CAPTAIN_CREATED:
       return `Created captain: ${details.captainName || 'Unknown'}`;
@@ -208,6 +214,7 @@ export const filterLogs = (logs, filter) => {
     ACTION_TYPES.PLAYER_ADDED,
     ACTION_TYPES.PLAYER_EDITED,
     ACTION_TYPES.PLAYER_DELETED,
+    ACTION_TYPES.PLAYER_REASSIGNED,
     ACTION_TYPES.PLAYERS_BULK_DELETE
   ];
 
@@ -227,7 +234,8 @@ export const filterLogs = (logs, filter) => {
     ACTION_TYPES.CHALLENGE_EDITED,
     ACTION_TYPES.CHALLENGE_ACCEPTED,
     ACTION_TYPES.CHALLENGE_DELETED,
-    ACTION_TYPES.PENDING_MATCH_EDITED
+    ACTION_TYPES.PENDING_MATCH_EDITED,
+    ACTION_TYPES.PENDING_MATCH_DELETED
   ];
 
   const captainActions = [
@@ -242,6 +250,7 @@ export const filterLogs = (logs, filter) => {
     ACTION_TYPES.TEAM_DELETED,
     ACTION_TYPES.MATCH_DELETED,
     ACTION_TYPES.CHALLENGE_DELETED,
+    ACTION_TYPES.PENDING_MATCH_DELETED,
     ACTION_TYPES.CAPTAIN_DELETED,
     ACTION_TYPES.BONUS_DELETED,
     ACTION_TYPES.PHOTO_DELETED,

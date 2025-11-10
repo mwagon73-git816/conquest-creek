@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Plus, Check, X, Upload, Image as ImageIcon, Clock, AlertCircle } from 'lucide-react';
+import { Calendar, Plus, Check, X, Upload, Image as ImageIcon, Clock, AlertCircle, Trash2 } from 'lucide-react';
 import { ACTION_TYPES } from '../services/activityLogger';
 import { formatNTRP, formatDynamic, formatDate } from '../utils/formatters';
 import { tournamentStorage } from '../services/storage';
@@ -748,6 +748,45 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
     setShowMatchForm(true);
   };
 
+  // Handle deleting a pending match (directors only)
+  const handleDeletePendingMatch = (pendingMatch) => {
+    if (userRole !== 'director') {
+      alert('⚠️ Only tournament directors can delete pending matches.');
+      return;
+    }
+
+    const team1Name = getTeamName(pendingMatch.challengerTeamId);
+    const team2Name = getTeamName(pendingMatch.challengedTeamId);
+    const matchDescription = `${team1Name} vs ${team2Name} (Level ${pendingMatch.acceptedLevel || pendingMatch.proposedLevel})`;
+
+    if (!confirm(`Are you sure you want to delete this pending match?\n\n${matchDescription}\n\nThis action cannot be undone.`)) {
+      return;
+    }
+
+    // Remove the challenge from the challenges array
+    const updatedChallenges = challenges.filter(c => c.id !== pendingMatch.id);
+    onChallengesChange(updatedChallenges);
+
+    // Log the deletion
+    addLog(
+      ACTION_TYPES.PENDING_MATCH_DELETED,
+      {
+        matchDescription,
+        team1Name,
+        team2Name,
+        challengerTeamId: pendingMatch.challengerTeamId,
+        challengedTeamId: pendingMatch.challengedTeamId,
+        level: pendingMatch.acceptedLevel || pendingMatch.proposedLevel,
+        scheduledDate: pendingMatch.acceptedDate
+      },
+      pendingMatch.id,
+      pendingMatch,
+      null
+    );
+
+    alert('✅ Pending match deleted successfully.');
+  };
+
   // Helper function to get team name
   const getTeamName = (teamId) => {
     const team = teams.find(t => t.id === teamId);
@@ -893,16 +932,28 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
                       </div>
                     </div>
 
-                    {/* Enter Results Button */}
-                    {canEnterResults(pendingMatch) && (
-                      <button
-                        onClick={() => handleEnterPendingResults(pendingMatch)}
-                        className="ml-4 flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition-colors font-medium whitespace-nowrap"
-                      >
-                        <Check className="w-4 h-4" />
-                        Enter Results
-                      </button>
-                    )}
+                    {/* Action Buttons */}
+                    <div className="ml-4 flex flex-col gap-2">
+                      {canEnterResults(pendingMatch) && (
+                        <button
+                          onClick={() => handleEnterPendingResults(pendingMatch)}
+                          className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition-colors font-medium whitespace-nowrap"
+                        >
+                          <Check className="w-4 h-4" />
+                          Enter Results
+                        </button>
+                      )}
+                      {userRole === 'director' && (
+                        <button
+                          onClick={() => handleDeletePendingMatch(pendingMatch)}
+                          className="flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 transition-colors font-medium whitespace-nowrap"
+                          title="Delete pending match"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                          Delete
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               );

@@ -212,6 +212,47 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
     setShowEditPendingModal(true);
   };
 
+  // Handle deleting a pending match (directors only)
+  const handleDeletePendingMatch = (pendingMatch) => {
+    if (userRole !== 'director') {
+      alert('⚠️ Only tournament directors can delete pending matches.');
+      return;
+    }
+
+    const team1 = teams.find(t => t.id === pendingMatch.challengerTeamId);
+    const team2 = teams.find(t => t.id === pendingMatch.challengedTeamId);
+    const team1Name = team1?.name || 'Unknown Team';
+    const team2Name = team2?.name || 'Unknown Team';
+    const matchDescription = `${team1Name} vs ${team2Name} (Level ${pendingMatch.acceptedLevel || pendingMatch.proposedLevel})`;
+
+    if (!confirm(`Are you sure you want to delete this pending match?\n\n${matchDescription}\n\nThis action cannot be undone.`)) {
+      return;
+    }
+
+    // Remove the challenge from the challenges array
+    const updatedChallenges = challenges.filter(c => c.id !== pendingMatch.id);
+    onChallengesChange(updatedChallenges);
+
+    // Log the deletion
+    addLog(
+      ACTION_TYPES.PENDING_MATCH_DELETED,
+      {
+        matchDescription,
+        team1Name,
+        team2Name,
+        challengerTeamId: pendingMatch.challengerTeamId,
+        challengedTeamId: pendingMatch.challengedTeamId,
+        level: pendingMatch.acceptedLevel || pendingMatch.proposedLevel,
+        scheduledDate: pendingMatch.acceptedDate
+      },
+      pendingMatch.id,
+      pendingMatch,
+      null
+    );
+
+    alert('✅ Pending match deleted successfully.');
+  };
+
   const handleConfirmEditPending = () => {
     // Validation
     if (!editPendingFormData.acceptedDate) {
@@ -685,7 +726,7 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
                       </div>
 
                       {/* Action Buttons */}
-                      <div className="ml-4 flex gap-2">
+                      <div className="ml-4 flex flex-col gap-2">
                         {/* Edit Button */}
                         {canEditPendingMatch(challenge) && (
                           <button
@@ -706,6 +747,18 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
                           >
                             <Check className="w-4 h-4" />
                             Enter Results
+                          </button>
+                        )}
+
+                        {/* Delete Button (Directors Only) */}
+                        {userRole === 'director' && (
+                          <button
+                            onClick={() => handleDeletePendingMatch(challenge)}
+                            className="flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 transition-colors font-medium whitespace-nowrap"
+                            title="Delete this pending match"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                            Delete
                           </button>
                         )}
                       </div>
