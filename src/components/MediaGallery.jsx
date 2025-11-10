@@ -236,22 +236,25 @@ const MediaGallery = ({
 
   // Delete photo
   const handleDelete = async (photoId) => {
-    if (confirm('Delete this photo? It will be removed from both the gallery and carousel.')) {
-      try {
-        // Find the photo to get its storage path
-        const photo = photos.find(p => p.id === photoId);
+    const photo = photos.find(p => p.id === photoId);
+    const photoInfo = getPhotoInfo(photo);
 
+    if (confirm(`Delete this photo?\n\n"${photoInfo}"\n\nThis will permanently remove it from the gallery and cannot be undone.`)) {
+      try {
         // Delete from Firebase Storage if it has a storage path
         if (photo?.storagePath) {
           await imageStorage.deleteImage(photo.storagePath);
         }
 
-        // Delete from database
+        // Delete from database (this will also log the deletion)
         onDeletePhoto(photoId);
         setLightboxOpen(false);
+
+        // Show success message
+        alert('✅ Photo deleted successfully.');
       } catch (error) {
         console.error('Error deleting photo:', error);
-        alert('Error deleting photo. Please try again.');
+        alert('❌ Error deleting photo. Please try again.');
       }
     }
   };
@@ -418,7 +421,7 @@ const MediaGallery = ({
               onClick={() => handleOpenLightbox(index)}
             >
               {/* Thumbnail */}
-              <div className="relative aspect-square bg-gray-900">
+              <div className="relative aspect-square bg-gray-900 group">
                 <img
                   src={photo.imageUrl || photo.imageData}
                   alt={getPhotoInfo(photo)}
@@ -426,9 +429,23 @@ const MediaGallery = ({
                   loading="lazy"
                 />
                 {/* Hover overlay */}
-                <div className="absolute inset-0 bg-black bg-opacity-0 hover:bg-opacity-30 transition-all flex items-center justify-center">
-                  <ImageIcon className="w-8 h-8 text-white opacity-0 hover:opacity-100 transition-opacity" />
+                <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all flex items-center justify-center">
+                  <ImageIcon className="w-8 h-8 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
                 </div>
+
+                {/* Delete Button (Directors Only) */}
+                {canDelete && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDelete(photo.id);
+                    }}
+                    className="absolute top-2 right-2 bg-red-600 hover:bg-red-700 text-white p-2 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                    title="Delete photo"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
               </div>
 
               {/* Caption */}

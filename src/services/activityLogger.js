@@ -176,7 +176,7 @@ const generateDescription = (logEntry) => {
     case ACTION_TYPES.PHOTO_UPLOADED:
       return `Uploaded photo for match: ${details.matchInfo || 'Unknown'}`;
     case ACTION_TYPES.PHOTO_DELETED:
-      return `Deleted photo`;
+      return `Deleted photo: ${details.photoInfo || 'Match photo'}`;
 
     case ACTION_TYPES.USER_LOGIN:
       return `${details.role || 'User'} logged in`;

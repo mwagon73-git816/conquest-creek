@@ -616,6 +616,28 @@ const App = () => {
   };
 
   const handleDeletePhoto = (photoId) => {
+    const photo = photos.find(p => p.id === photoId);
+
+    // Log the deletion
+    if (photo) {
+      const photoInfo = photo.caption ||
+                       (photo.team1Name && photo.team2Name ? `${photo.team1Name} vs ${photo.team2Name}` : null) ||
+                       'Match photo';
+
+      addLog(
+        ACTION_TYPES.PHOTO_DELETED,
+        {
+          photoInfo,
+          photoId,
+          uploadDate: photo.uploadTimestamp || photo.matchDate,
+          teams: photo.team1Name && photo.team2Name ? `${photo.team1Name} vs ${photo.team2Name}` : null
+        },
+        photoId,
+        photo,
+        null
+      );
+    }
+
     setPhotos(photos.filter(p => p.id !== photoId));
   };
 
