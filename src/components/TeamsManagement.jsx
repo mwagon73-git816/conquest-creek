@@ -752,8 +752,7 @@ const TeamsManagement = ({
                   <div className="text-xs font-semibold text-gray-600 mb-2">Roster:</div>
                   <div className="grid grid-cols-2 gap-2 text-sm">
                     {teamPlayers.map(player => {
-                      const effectiveRating = getEffectiveRating(player);
-                      const displayRating = player.dynamicRating ? formatDynamic(effectiveRating) : formatNTRP(effectiveRating);
+                      const displayRating = formatNTRP(player.ntrpRating);
                       return (
                         <div key={player.id} className="text-gray-700 flex items-center justify-between">
                           <span>{player.firstName} {player.lastName} ({player.gender} {displayRating})</span>
