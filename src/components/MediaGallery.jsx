@@ -267,16 +267,16 @@ const MediaGallery = ({
 
   // Get photo display info
   const getPhotoInfo = (photo) => {
+    // If has custom caption, show that (highest priority)
+    if (photo.caption) {
+      return photo.caption;
+    }
+
     // If has match data, show match caption
     if (photo.team1Id && photo.team2Id) {
       const team1 = photo.team1Name || getTeamName(photo.team1Id);
       const team2 = photo.team2Name || getTeamName(photo.team2Id);
       return `${team1} vs ${team2}`;
-    }
-
-    // If has custom caption, show that
-    if (photo.caption) {
-      return photo.caption;
     }
 
     // Default
