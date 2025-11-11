@@ -58,6 +58,22 @@ const MediaGallery = ({
 
   const filteredPhotos = getFilteredPhotos();
 
+  // Debug log when photos change
+  useEffect(() => {
+    console.log('🖼️ ===== MEDIA GALLERY: Photos prop changed =====');
+    console.log('🖼️ Total photos received:', photos.length);
+    if (photos.length > 0) {
+      console.log('🖼️ First photo in array:', JSON.stringify(photos[0], null, 2));
+      console.log('🖼️ First photo metadata:');
+      console.log('  - Caption:', photos[0].caption);
+      console.log('  - Team1 ID:', photos[0].team1Id, '| Name:', photos[0].team1Name);
+      console.log('  - Team2 ID:', photos[0].team2Id, '| Name:', photos[0].team2Name);
+      console.log('  - Match Date:', photos[0].matchDate);
+      console.log('  - Display text from getPhotoInfo:', getPhotoInfo(photos[0]));
+    }
+    console.log('🖼️ ===============================================');
+  }, [photos]);
+
   // Keyboard navigation for lightbox
   useEffect(() => {
     if (!lightboxOpen) return;
@@ -189,6 +205,16 @@ const MediaGallery = ({
         set3Team2: '',
         set3IsTiebreaker: false
       };
+
+      console.log('📸 ===== MEDIA UPLOAD DEBUG =====');
+      console.log('📸 Photo object being created:', JSON.stringify(newPhoto, null, 2));
+      console.log('📸 Metadata captured:');
+      console.log('  - Caption:', newPhoto.caption);
+      console.log('  - Team 1 ID:', newPhoto.team1Id, '| Name:', newPhoto.team1Name);
+      console.log('  - Team 2 ID:', newPhoto.team2Id, '| Name:', newPhoto.team2Name);
+      console.log('  - Match Date:', newPhoto.matchDate);
+      console.log('  - Upload Timestamp:', newPhoto.uploadTimestamp);
+      console.log('📸 ================================');
 
       // Add photo
       await onAddPhoto(newPhoto);

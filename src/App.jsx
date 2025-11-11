@@ -176,13 +176,31 @@ const App = () => {
         }
       }
 
-      console.log('📥 Fetching photos data from Firebase...');
+      console.log('📥 ===== LOADING PHOTOS FROM FIREBASE =====');
       const photosData = await tournamentStorage.getPhotos();
-      console.log('Photos data received:', photosData ? 'YES' : 'NO/NULL');
-      
+      console.log('📥 Photos data received from Firestore:', photosData ? 'YES' : 'NO/NULL');
+
       if (photosData) {
         versions.photos = photosData.updatedAt;
-        setPhotos(JSON.parse(photosData.data));
+        console.log('📥 Photos version:', photosData.updatedAt);
+        console.log('📥 Raw photos data string (first 200 chars):', photosData.data.substring(0, 200));
+
+        const parsedPhotos = JSON.parse(photosData.data);
+        console.log('📥 Parsed photos count:', parsedPhotos.length);
+        console.log('📥 Sample of loaded photos (first photo):');
+        if (parsedPhotos.length > 0) {
+          console.log(JSON.stringify(parsedPhotos[0], null, 2));
+          console.log('📥 First photo metadata check:');
+          console.log('  - Has caption?', parsedPhotos[0].caption);
+          console.log('  - Has team1Id?', parsedPhotos[0].team1Id);
+          console.log('  - Has team1Name?', parsedPhotos[0].team1Name);
+          console.log('  - Has team2Id?', parsedPhotos[0].team2Id);
+          console.log('  - Has team2Name?', parsedPhotos[0].team2Name);
+          console.log('  - Has matchDate?', parsedPhotos[0].matchDate);
+        }
+        console.log('📥 =========================================');
+
+        setPhotos(parsedPhotos);
       } else {
         if (photos.length === 0) {
           console.log('⚪ First load - initializing empty photos');
@@ -362,7 +380,15 @@ const App = () => {
       }
       if (bonusesResult?.success) newVersions.bonuses = bonusesResult.version;
 
-      console.log('💾 Saving photos to Firebase...');
+      console.log('💾 ===== SAVING PHOTOS TO FIREBASE =====');
+      console.log('💾 Photos count being saved:', photos.length);
+      console.log('💾 Sample of photos being saved (first photo):');
+      if (photos.length > 0) {
+        console.log(JSON.stringify(photos[0], null, 2));
+      }
+      console.log('💾 Full photos array:', JSON.stringify(photos, null, 2));
+      console.log('💾 ======================================');
+
       const photosResult = await tournamentStorage.setPhotos(
         JSON.stringify(photos),
         dataVersions.photos
@@ -374,7 +400,10 @@ const App = () => {
         alert('⚠️ Data Conflict Detected!\n\nAnother user has modified the photos data since you loaded it.\n\nPlease refresh the page to see the latest changes.');
         return;
       }
-      if (photosResult?.success) newVersions.photos = photosResult.version;
+      if (photosResult?.success) {
+        newVersions.photos = photosResult.version;
+        console.log('✅ Photos saved successfully to Firestore. Version:', photosResult.version);
+      }
 
       console.log('💾 Saving captains to Firebase...');
       const captainsResult = await tournamentStorage.setCaptains(
@@ -641,14 +670,61 @@ const App = () => {
     setPhotos(photos.filter(p => p.id !== photoId));
   };
 
-  const handleAddPhoto = (photoData) => {
+  const handleAddPhoto = async (photoData) => {
+    console.log('📥 ===== APP.JSX: handleAddPhoto called =====');
+    console.log('📥 Photo data received:', JSON.stringify(photoData, null, 2));
+    console.log('📥 Current photos count before add:', photos.length);
+
     let updatedPhotos = [...photos];
     if (updatedPhotos.length >= 50) {
       updatedPhotos.sort((a, b) => new Date(a.uploadTimestamp) - new Date(b.uploadTimestamp));
       updatedPhotos = updatedPhotos.slice(1);
     }
     updatedPhotos.push(photoData);
+
+    console.log('📥 Updated photos count after add:', updatedPhotos.length);
+    console.log('📥 Photo added to state. Auto-saving to Firestore...');
+
+    // Update state first
     setPhotos(updatedPhotos);
+
+    // Auto-save photos to Firestore immediately
+    try {
+      console.log('💾 ===== AUTO-SAVING PHOTO TO FIREBASE =====');
+      const photosResult = await tournamentStorage.setPhotos(
+        JSON.stringify(updatedPhotos),
+        dataVersions.photos
+      );
+
+      if (photosResult?.success) {
+        setDataVersions(prev => ({ ...prev, photos: photosResult.version }));
+        console.log('✅ Photo auto-saved successfully to Firestore. Version:', photosResult.version);
+
+        // Log the photo that was added
+        addLog(
+          ACTION_TYPES.PHOTO_UPLOADED,
+          {
+            matchInfo: photoData.caption ||
+                      (photoData.team1Name && photoData.team2Name ? `${photoData.team1Name} vs ${photoData.team2Name}` : null) ||
+                      'Match photo',
+            photoId: photoData.id,
+            uploadDate: photoData.uploadTimestamp || photoData.matchDate,
+            teams: photoData.team1Name && photoData.team2Name ? `${photoData.team1Name} vs ${photoData.team2Name}` : null
+          },
+          photoData.id,
+          null,
+          photoData
+        );
+      } else if (photosResult?.conflict) {
+        console.error('❌ Conflict detected while auto-saving photo');
+        alert('⚠️ Data conflict detected. Another user has modified photos. Please refresh the page.');
+      }
+    } catch (error) {
+      console.error('❌ Error auto-saving photo:', error);
+      alert('⚠️ Photo uploaded but failed to save to database.\n\nPlease use the manual Save button to persist your changes.');
+    }
+
+    console.log('📥 ==========================================');
   };
 
   const getEffectiveRating = (player) => {
