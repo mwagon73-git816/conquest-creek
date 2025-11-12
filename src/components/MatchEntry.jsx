@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Calendar, Plus, Check, X, Upload, Image as ImageIcon, Clock, AlertCircle, Trash2 } from 'lucide-react';
 import { ACTION_TYPES } from '../services/activityLogger';
 import { formatNTRP, formatDynamic, formatDate } from '../utils/formatters';
-import { tournamentStorage } from '../services/storage';
+import { tournamentStorage, imageStorage } from '../services/storage';
 
 const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange, isAuthenticated, setActiveTab, players, captains, onAddPhoto, loginName, userRole, userTeamId, editingMatch, setEditingMatch, addLog }) => {
   const [showMatchForm, setShowMatchForm] = useState(false);
@@ -299,6 +299,48 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
     }
   };
 
+  // Resize and compress image (same logic as MediaGallery)
+  const processImage = (imageDataUrl) => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Calculate new dimensions (max 1920x1080)
+        let width = img.width;
+        let height = img.height;
+        const maxWidth = 1920;
+        const maxHeight = 1080;
+
+        if (width > maxWidth || height > maxHeight) {
+          const ratio = Math.min(maxWidth / width, maxHeight / height);
+          width = Math.floor(width * ratio);
+          height = Math.floor(height * ratio);
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+
+        // Draw image
+        ctx.drawImage(img, 0, 0, width, height);
+
+        // Compress to target 300-500KB
+        let quality = 0.9;
+        let compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
+
+        // Iteratively reduce quality if needed
+        while (compressedDataUrl.length > 500 * 1024 * 1.37 && quality > 0.5) {
+          quality -= 0.05;
+          compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
+        }
+
+        resolve(compressedDataUrl);
+      };
+      img.src = imageDataUrl;
+    });
+  };
+
   const handleSaveMatch = async () => {
     if (!matchFormData.team1Id || !matchFormData.team2Id) {
       alert('⚠️ Please select both teams.');
@@ -434,32 +476,55 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
 
     // Handle photo upload if present
     if (photoFile && photoPreview && onAddPhoto) {
-      // Get team names for display
-      const team1 = teams.find(t => t.id === parseInt(matchFormData.team1Id));
-      const team2 = teams.find(t => t.id === parseInt(matchFormData.team2Id));
+      try {
+        console.log('📸 Processing and uploading match photo to Firebase Storage...');
 
-      const photoData = {
-        id: Date.now() + Math.random(), // Unique ID for photo
-        matchId: matchId,
-        imageData: photoPreview,
-        team1Id: parseInt(matchFormData.team1Id),
-        team2Id: parseInt(matchFormData.team2Id),
-        team1Name: team1 ? team1.name : 'Team 1',
-        team2Name: team2 ? team2.name : 'Team 2',
-        matchDate: matchFormData.date,
-        uploaderName: loginName,
-        uploadTimestamp: new Date().toISOString(),
-        // Store all match scoring details
-        winner: results.winner,
-        set1Team1: matchFormData.set1Team1,
-        set1Team2: matchFormData.set1Team2,
-        set2Team1: matchFormData.set2Team1,
-        set2Team2: matchFormData.set2Team2,
-        set3Team1: matchFormData.set3Team1,
-        set3Team2: matchFormData.set3Team2,
-        set3IsTiebreaker: matchFormData.set3IsTiebreaker
-      };
-      onAddPhoto(photoData);
+        // Process image (resize/compress)
+        const processedImage = await processImage(photoPreview);
+
+        // Generate unique photo ID and storage path
+        const photoId = Date.now().toString();
+        const storagePath = `photos/${photoId}.jpg`;
+
+        // Upload to Firebase Storage
+        console.log('📤 Uploading to Firebase Storage:', storagePath);
+        const imageUrl = await imageStorage.uploadImage(processedImage, storagePath);
+        console.log('✅ Upload successful. Download URL:', imageUrl);
+
+        // Get team names for display
+        const team1 = teams.find(t => t.id === parseInt(matchFormData.team1Id));
+        const team2 = teams.find(t => t.id === parseInt(matchFormData.team2Id));
+
+        const photoData = {
+          id: photoId,
+          matchId: matchId,
+          imageUrl: imageUrl, // Store download URL instead of base64
+          storagePath: storagePath, // Store path for deletion
+          caption: null, // No custom caption for match photos
+          team1Id: parseInt(matchFormData.team1Id),
+          team2Id: parseInt(matchFormData.team2Id),
+          team1Name: team1 ? team1.name : 'Team 1',
+          team2Name: team2 ? team2.name : 'Team 2',
+          matchDate: matchFormData.date,
+          uploaderName: loginName,
+          uploadTimestamp: new Date().toISOString(),
+          // Store all match scoring details
+          winner: results.winner,
+          set1Team1: matchFormData.set1Team1,
+          set1Team2: matchFormData.set1Team2,
+          set2Team1: matchFormData.set2Team1,
+          set2Team2: matchFormData.set2Team2,
+          set3Team1: matchFormData.set3Team1,
+          set3Team2: matchFormData.set3Team2,
+          set3IsTiebreaker: matchFormData.set3IsTiebreaker
+        };
+
+        await onAddPhoto(photoData);
+        console.log('✅ Photo metadata saved to Firestore');
+      } catch (error) {
+        console.error('❌ Error uploading match photo:', error);
+        alert('⚠️ Failed to upload match photo.\n\nThe match was saved but the photo upload failed. Please try uploading the photo separately via the Media Gallery.');
+      }
     }
 
     // Send email notifications if captain

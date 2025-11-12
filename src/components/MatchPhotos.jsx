@@ -127,7 +127,15 @@ const MatchPhotos = ({ photos, teams, isAuthenticated, onDeletePhoto }) => {
         <div className="p-4 bg-gradient-to-r from-blue-600 to-blue-800 text-white">
           <div className="flex justify-between items-start">
             <div>
-              {currentPhoto.winner ? (
+              {/* Check for custom caption first (highest priority) */}
+              {currentPhoto.caption ? (
+                <>
+                  <p className="font-semibold text-lg">{currentPhoto.caption}</p>
+                  <p className="text-sm text-blue-100 mt-1">
+                    {formatDate(currentPhoto.uploadTimestamp || currentPhoto.matchDate)}
+                  </p>
+                </>
+              ) : currentPhoto.winner ? (
                 <>
                   <div className="flex items-center gap-2 text-lg">
                     {currentPhoto.winner === 'team1' ? (
@@ -179,7 +187,7 @@ const MatchPhotos = ({ photos, teams, isAuthenticated, onDeletePhoto }) => {
                     {formatDate(currentPhoto.matchDate)}
                   </p>
                 </>
-              ) : (
+              ) : currentPhoto.team1Id && currentPhoto.team2Id ? (
                 <>
                   <div className="flex items-center gap-2 font-semibold text-lg">
                     <TeamLogo
@@ -198,6 +206,13 @@ const MatchPhotos = ({ photos, teams, isAuthenticated, onDeletePhoto }) => {
                   </div>
                   <p className="text-sm text-blue-100 mt-1">
                     {formatDate(currentPhoto.matchDate)}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="font-semibold text-lg">Match Photo</p>
+                  <p className="text-sm text-blue-100 mt-1">
+                    {formatDate(currentPhoto.uploadTimestamp || currentPhoto.matchDate)}
                   </p>
                 </>
               )}
