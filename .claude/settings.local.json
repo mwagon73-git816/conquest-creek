@@ -3,7 +3,8 @@
     "allow": [
       "Bash(npm run build:*)",
       "Bash(cat:*)",
-      "Bash(node query-matches.js:*)"
+      "Bash(node query-matches.js:*)",
+      "Bash(git add:*)"
     ],
     "deny": [],
     "ask": []
