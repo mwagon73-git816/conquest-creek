@@ -16,15 +16,15 @@
  * - Twilio credentials must be configured in Netlify environment variables
  * - Phone number fields will appear in captain settings UI
  *
- * Environment variables required:
- * - TWILIO_ACCOUNT_SID: Your Twilio account SID
- * - TWILIO_AUTH_TOKEN: Your Twilio auth token
- * - TWILIO_PHONE_NUMBER: Your Twilio phone number (E.164 format)
+ * Environment variables required (configured in Netlify dashboard):
+ * - VITE_TWILIO_ACCOUNT_SID: Your Twilio account SID
+ * - VITE_TWILIO_AUTH_TOKEN: Your Twilio auth token
+ * - VITE_TWILIO_PHONE_NUMBER: Your Twilio phone number (E.164 format)
  */
 
-const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
-const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
-const TWILIO_PHONE_NUMBER = process.env.TWILIO_PHONE_NUMBER;
+const TWILIO_ACCOUNT_SID = process.env.VITE_TWILIO_ACCOUNT_SID;
+const TWILIO_AUTH_TOKEN = process.env.VITE_TWILIO_AUTH_TOKEN;
+const TWILIO_PHONE_NUMBER = process.env.VITE_TWILIO_PHONE_NUMBER;
 
 exports.handler = async (event, context) => {
   // Only allow POST requests
