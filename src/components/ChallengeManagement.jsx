@@ -3,6 +3,7 @@ import { Plus, X, Check, Calendar, Users, Swords, Trophy, Clock, AlertCircle, Tr
 import { ACTION_TYPES, createLogEntry } from '../services/activityLogger';
 import { formatDate } from '../utils/formatters';
 import { tournamentStorage } from '../services/storage';
+import { isSmsEnabled } from '../firebase';
 
 export default function ChallengeManagement({
   teams,
@@ -106,6 +107,47 @@ export default function ChallengeManagement({
     if (selectedPlayers.length !== 2) return false;
     const combinedRating = calculateCombinedNTRP(selectedPlayers);
     return combinedRating <= parseFloat(matchLevel);
+  };
+
+  // Send challenge SMS notification
+  const sendChallengeSMS = async (recipientCaptain, challengerTeam, challengedTeam, smsType, proposedDate = null, matchLevel = null) => {
+    // Check feature flag first
+    if (!isSmsEnabled()) {
+      return { success: false, skipped: true };
+    }
+
+    if (!recipientCaptain || !recipientCaptain.smsEnabled || !recipientCaptain.phone) {
+      return { success: false, skipped: true };
+    }
+
+    try {
+      const smsResponse = await fetch('/.netlify/functions/send-sms-notification', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          recipientPhone: recipientCaptain.phone,
+          recipientName: recipientCaptain.name,
+          senderTeam: challengerTeam?.name || 'Unknown Team',
+          recipientTeam: challengedTeam?.name || 'Unknown Team',
+          proposedDate: proposedDate,
+          matchLevel: matchLevel,
+          smsType: smsType
+        })
+      });
+
+      if (smsResponse.ok) {
+        console.log(`Challenge ${smsType} SMS sent to ${recipientCaptain.name}`);
+        return { success: true };
+      } else {
+        console.error(`Failed to send challenge ${smsType} SMS:`, await smsResponse.text());
+        return { success: false, skipped: false };
+      }
+    } catch (error) {
+      console.error(`Error sending challenge ${smsType} SMS:`, error);
+      return { success: false, skipped: false };
+    }
   };
 
   // Handle create challenge
@@ -242,6 +284,31 @@ export default function ChallengeManagement({
     });
 
     onChallengesChange(updatedChallenges);
+
+    // Send SMS notification to challenger captain
+    const challengerTeam = teams.find(t => t.id === selectedChallenge.challengerTeamId);
+    const challengedTeam = teams.find(t => t.id === challengedTeamId);
+    const challengerCaptain = captains.find(c =>
+      c.teamId === selectedChallenge.challengerTeamId &&
+      c.status === 'active'
+    );
+
+    if (challengerCaptain) {
+      sendChallengeSMS(
+        challengerCaptain,
+        challengedTeam,
+        challengerTeam,
+        'challenge_accepted',
+        acceptFormData.acceptedDate,
+        acceptFormData.acceptedLevel
+      ).then(result => {
+        if (result.success) {
+          console.log('Challenge accepted SMS sent successfully');
+        }
+      }).catch(error => {
+        console.error('Error sending challenge accepted SMS:', error);
+      });
+    }
 
     // Reset form
     setShowAcceptForm(false);

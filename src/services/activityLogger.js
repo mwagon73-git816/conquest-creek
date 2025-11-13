@@ -26,6 +26,7 @@ export const ACTION_TYPES = {
   CHALLENGE_EDITED: 'challenge_edited',
   CHALLENGE_ACCEPTED: 'challenge_accepted',
   CHALLENGE_DELETED: 'challenge_deleted',
+  PENDING_MATCH_CREATED: 'pending_match_created',
   PENDING_MATCH_EDITED: 'pending_match_edited',
   PENDING_MATCH_DELETED: 'pending_match_deleted',
 
@@ -154,6 +155,8 @@ const generateDescription = (logEntry) => {
       return `Accepted challenge: ${details.challengerTeam} vs ${details.challengedTeam}`;
     case ACTION_TYPES.CHALLENGE_DELETED:
       return `Deleted challenge: ${details.challengerTeam}`;
+    case ACTION_TYPES.PENDING_MATCH_CREATED:
+      return `Created pending match: ${details.team1Name} vs ${details.team2Name} (Level ${details.level})`;
     case ACTION_TYPES.PENDING_MATCH_EDITED:
       return `Edited pending match: ${details.team1Name} vs ${details.team2Name} (${details.changesSummary || 'Updated'})`;
     case ACTION_TYPES.PENDING_MATCH_DELETED:
@@ -234,6 +237,7 @@ export const filterLogs = (logs, filter) => {
     ACTION_TYPES.CHALLENGE_EDITED,
     ACTION_TYPES.CHALLENGE_ACCEPTED,
     ACTION_TYPES.CHALLENGE_DELETED,
+    ACTION_TYPES.PENDING_MATCH_CREATED,
     ACTION_TYPES.PENDING_MATCH_EDITED,
     ACTION_TYPES.PENDING_MATCH_DELETED
   ];

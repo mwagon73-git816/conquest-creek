@@ -3,6 +3,7 @@ import { Calendar, Plus, Check, X, Upload, Image as ImageIcon, Clock, AlertCircl
 import { ACTION_TYPES } from '../services/activityLogger';
 import { formatNTRP, formatDynamic, formatDate } from '../utils/formatters';
 import { tournamentStorage, imageStorage } from '../services/storage';
+import { isSmsEnabled } from '../firebase';
 
 const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange, isAuthenticated, setActiveTab, players, captains, onAddPhoto, loginName, userRole, userTeamId, editingMatch, setEditingMatch, addLog }) => {
   const [showMatchForm, setShowMatchForm] = useState(false);
@@ -25,6 +26,17 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
   const [photoFile, setPhotoFile] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
   const [allowPlayerEdit, setAllowPlayerEdit] = useState(false);
+
+  // Create Pending Match state
+  const [showPendingMatchForm, setShowPendingMatchForm] = useState(false);
+  const [pendingMatchFormData, setPendingMatchFormData] = useState({
+    opponentTeamId: '',
+    scheduledDate: new Date().toISOString().split('T')[0],
+    level: '7.0',
+    team1Players: [],
+    team2Players: [],
+    notes: ''
+  });
 
   // Pre-populate form when editing a match
   useEffect(() => {
@@ -197,6 +209,8 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
 
       let emailsSent = 0;
       let emailsFailed = 0;
+      let smsSent = 0;
+      let smsFailed = 0;
 
       // Determine email type based on whether we're editing
       const emailType = isEditing ? 'edit' : 'confirmation';
@@ -234,6 +248,40 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
           console.error(`Error sending ${isEditing ? 'edit' : 'confirmation'} email:`, error);
           emailsFailed++;
         }
+
+        // Send SMS to entering captain if enabled (feature flag check)
+        if (isSmsEnabled() && enteringCaptain.smsEnabled && enteringCaptain.phone) {
+          try {
+            const smsResponse = await fetch('/.netlify/functions/send-sms-notification', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                recipientPhone: enteringCaptain.phone,
+                recipientName: enteringCaptain.name,
+                senderTeam: senderTeam,
+                recipientTeam: recipientTeam,
+                matchScores: matchScores,
+                matchDate: matchData.date,
+                matchLevel: matchData.level,
+                smsType: emailType,
+                editorName: loginName
+              })
+            });
+
+            if (smsResponse.ok) {
+              console.log(`${isEditing ? 'Edit' : 'Confirmation'} SMS sent to entering captain`);
+              smsSent++;
+            } else {
+              console.error(`Failed to send ${isEditing ? 'edit' : 'confirmation'} SMS:`, await smsResponse.text());
+              smsFailed++;
+            }
+          } catch (error) {
+            console.error(`Error sending ${isEditing ? 'edit' : 'confirmation'} SMS:`, error);
+            smsFailed++;
+          }
+        }
       }
 
       // Send email to opponent captain (verification or edit notification)
@@ -268,34 +316,289 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
           console.error(`Error sending ${isEditing ? 'edit' : 'verification'} email:`, error);
           emailsFailed++;
         }
+
+        // Send SMS to opponent captain if enabled (feature flag check)
+        if (isSmsEnabled() && opponentCaptain.smsEnabled && opponentCaptain.phone) {
+          try {
+            const smsResponse = await fetch('/.netlify/functions/send-sms-notification', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                recipientPhone: opponentCaptain.phone,
+                recipientName: opponentCaptain.name,
+                senderTeam: senderTeam,
+                recipientTeam: recipientTeam,
+                matchScores: matchScores,
+                matchDate: matchData.date,
+                matchLevel: matchData.level,
+                smsType: emailTypeVerify,
+                editorName: loginName
+              })
+            });
+
+            if (smsResponse.ok) {
+              console.log(`${isEditing ? 'Edit' : 'Verification'} SMS sent to opponent captain`);
+              smsSent++;
+            } else {
+              console.error(`Failed to send ${isEditing ? 'edit' : 'verification'} SMS:`, await smsResponse.text());
+              smsFailed++;
+            }
+          } catch (error) {
+            console.error(`Error sending ${isEditing ? 'edit' : 'verification'} SMS:`, error);
+            smsFailed++;
+          }
+        }
       }
 
       // Return results
-      if (emailsSent === 2) {
+      const totalNotificationsSent = emailsSent + smsSent;
+      const totalNotificationsFailed = emailsFailed + smsFailed;
+
+      if (emailsSent === 2 && smsSent === 0) {
         const message = isEditing
           ? 'Match updated. Notification emails sent to both captains.'
           : 'Match saved. Confirmation emails sent to both captains.';
         return { success: true, message };
-      } else if (emailsSent > 0) {
-        const message = isEditing
-          ? 'Match updated but some email notifications failed.'
-          : 'Match saved but some email notifications failed.';
+      } else if (totalNotificationsSent > 0) {
+        const emailMsg = emailsSent > 0 ? `${emailsSent} email(s)` : '';
+        const smsMsg = smsSent > 0 ? `${smsSent} SMS` : '';
+        const notificationTypes = [emailMsg, smsMsg].filter(Boolean).join(' and ');
+
+        const message = totalNotificationsFailed > 0
+          ? `${isEditing ? 'Match updated' : 'Match saved'}. ${notificationTypes} sent, but some notifications failed.`
+          : `${isEditing ? 'Match updated' : 'Match saved'}. Notifications sent: ${notificationTypes}.`;
         return { success: true, message };
-      } else if (emailsFailed > 0) {
+      } else if (totalNotificationsFailed > 0) {
         const message = isEditing
-          ? 'Match updated but email notifications failed.'
-          : 'Match saved but email notifications failed.';
+          ? 'Match updated but notifications failed.'
+          : 'Match saved but notifications failed.';
         return { success: false, message };
       } else {
         const message = isEditing
-          ? 'Match updated. No captains with emails found.'
-          : 'Match saved. No captains with emails found.';
+          ? 'Match updated. No captains with notification preferences found.'
+          : 'Match saved. No captains with notification preferences found.';
         return { success: true, message };
       }
 
     } catch (error) {
       console.error('Error sending match notifications:', error);
-      return { success: false, message: 'Match saved but email notifications failed.' };
+      return { success: false, message: 'Match saved but notifications failed.' };
+    }
+  };
+
+  // Helper function to get user info for logging
+  const getUserInfo = () => {
+    if (userRole === 'captain') {
+      const captain = captains?.find(c => c.teamId === userTeamId);
+      return { name: captain?.name || loginName || 'Unknown', role: 'captain' };
+    }
+    return { name: loginName || 'Director', role: 'director' };
+  };
+
+  // Calculate combined NTRP for players
+  const calculateCombinedNTRP = (playerIds) => {
+    if (!playerIds || playerIds.length === 0) return 0;
+    const playerRatings = playerIds.map(id => {
+      const player = players.find(p => p.id === id);
+      return player ? parseFloat(player.ntrpRating) : 0;
+    });
+    return playerRatings.reduce((sum, rating) => sum + rating, 0);
+  };
+
+  // Create Pending Match directly (outside challenge system)
+  const handleCreatePendingMatch = async () => {
+    // Validation
+    if (!pendingMatchFormData.opponentTeamId) {
+      alert('⚠️ Please select an opposing team.');
+      return;
+    }
+
+    if (!pendingMatchFormData.scheduledDate) {
+      alert('⚠️ Please select a match date.');
+      return;
+    }
+
+    if (!pendingMatchFormData.level) {
+      alert('⚠️ Please select a match level.');
+      return;
+    }
+
+    // Validate player selection for captain's team
+    if (pendingMatchFormData.team1Players.length !== 2) {
+      alert('⚠️ Please select exactly 2 players from your team.');
+      return;
+    }
+
+    // Validate NTRP for captain's team
+    const team1CombinedNTRP = calculateCombinedNTRP(pendingMatchFormData.team1Players);
+    const maxNTRP = parseFloat(pendingMatchFormData.level);
+    if (team1CombinedNTRP > maxNTRP) {
+      alert(`⚠️ Combined NTRP (${team1CombinedNTRP.toFixed(1)}) exceeds match level (${maxNTRP}). Please select different players.`);
+      return;
+    }
+
+    // Opponent players are optional at creation - can be added later
+    if (pendingMatchFormData.team2Players.length > 0 && pendingMatchFormData.team2Players.length !== 2) {
+      alert('⚠️ Opponent team must have 0 or 2 players selected.');
+      return;
+    }
+
+    try {
+      console.log('📋 Creating pending match...');
+
+      // Create the pending match (as an accepted challenge with origin='direct')
+      const newPendingMatch = {
+        id: Date.now(),
+        challengerTeamId: userTeamId, // Captain's team
+        challengedTeamId: parseInt(pendingMatchFormData.opponentTeamId),
+        status: 'accepted', // Goes directly to pending status
+        origin: 'direct', // Track that this was created directly, not from challenge
+        proposedLevel: pendingMatchFormData.level,
+        acceptedLevel: pendingMatchFormData.level,
+        proposedDate: pendingMatchFormData.scheduledDate,
+        acceptedDate: pendingMatchFormData.scheduledDate,
+        challengerPlayers: pendingMatchFormData.team1Players,
+        challengedPlayers: pendingMatchFormData.team2Players,
+        combinedNTRP: team1CombinedNTRP,
+        challengedCombinedNTRP: pendingMatchFormData.team2Players.length === 2
+          ? calculateCombinedNTRP(pendingMatchFormData.team2Players)
+          : 0,
+        notes: pendingMatchFormData.notes.trim(),
+        createdBy: getUserInfo()?.name || 'Unknown',
+        createdAt: new Date().toISOString(),
+        acceptedBy: getUserInfo()?.name || 'Unknown', // Same person since it's direct creation
+        acceptedAt: new Date().toISOString()
+      };
+
+      // Add to challenges array (local state only - user will click "Save Data" to persist)
+      const updatedChallenges = challenges ? [...challenges, newPendingMatch] : [newPendingMatch];
+
+      // Update local state
+      onChallengesChange(updatedChallenges);
+      console.log('✅ Pending match created in local state!');
+
+      // Get team names for notifications and logging
+      const team1 = teams.find(t => t.id === userTeamId);
+      const team2 = teams.find(t => t.id === parseInt(pendingMatchFormData.opponentTeamId));
+      const team1Name = team1?.name || 'Unknown Team';
+      const team2Name = team2?.name || 'Unknown Team';
+
+      // Send notifications to opponent captain
+      const opponentCaptain = captains?.find(c =>
+        c.teamId === parseInt(pendingMatchFormData.opponentTeamId) &&
+        c.status === 'active'
+      );
+
+      let notificationSent = false;
+
+      if (opponentCaptain && opponentCaptain.email) {
+        // Send email notification
+        try {
+          const emailResponse = await fetch('/.netlify/functions/send-match-notification', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              recipientEmail: opponentCaptain.email,
+              recipientName: opponentCaptain.name,
+              senderTeam: team1Name,
+              recipientTeam: team2Name,
+              matchScores: '', // No scores yet, it's pending
+              matchDate: pendingMatchFormData.scheduledDate,
+              matchLevel: pendingMatchFormData.level,
+              emailType: 'pending_match_created',
+              editorName: getUserInfo()?.name || 'Unknown'
+            })
+          });
+
+          if (emailResponse.ok) {
+            console.log('Pending match notification email sent to opponent captain');
+            notificationSent = true;
+          }
+        } catch (error) {
+          console.error('Error sending pending match email notification:', error);
+        }
+
+        // Send SMS if enabled and captain has opted in
+        if (isSmsEnabled() && opponentCaptain.smsEnabled && opponentCaptain.phone) {
+          try {
+            const smsResponse = await fetch('/.netlify/functions/send-sms-notification', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                recipientPhone: opponentCaptain.phone,
+                recipientName: opponentCaptain.name,
+                senderTeam: team1Name,
+                recipientTeam: team2Name,
+                proposedDate: pendingMatchFormData.scheduledDate,
+                matchLevel: pendingMatchFormData.level,
+                smsType: 'pending_match_created'
+              })
+            });
+
+            if (smsResponse.ok) {
+              console.log('Pending match SMS notification sent to opponent captain');
+              notificationSent = true;
+            }
+          } catch (error) {
+            console.error('Error sending pending match SMS notification:', error);
+          }
+        }
+      }
+
+      // Activity logging
+      if (addLog) {
+        await addLog(
+          ACTION_TYPES.PENDING_MATCH_CREATED,
+          {
+            team1Name,
+            team2Name,
+            level: pendingMatchFormData.level,
+            scheduledDate: pendingMatchFormData.scheduledDate,
+            origin: 'direct'
+          },
+          newPendingMatch.id
+        );
+      }
+
+      // Reset form and close
+      setPendingMatchFormData({
+        opponentTeamId: '',
+        scheduledDate: new Date().toISOString().split('T')[0],
+        level: '7.0',
+        team1Players: [],
+        team2Players: [],
+        notes: ''
+      });
+      setShowPendingMatchForm(false);
+
+      // Success message
+      const notifMsg = notificationSent
+        ? ' Notification sent to opponent captain.'
+        : ' (Note: No notification sent - captain not found or no contact info.)';
+
+      console.log('==========================');
+      console.log('✅ Pending Match Created!');
+      console.log('==========================');
+      console.log('Teams:', `${team1Name} vs ${team2Name}`);
+      console.log('Date:', pendingMatchFormData.scheduledDate);
+      console.log('Level:', pendingMatchFormData.level);
+      console.log('Origin:', 'direct');
+      console.log('Notification sent:', notificationSent);
+      console.log('⚠️ Don\'t forget to click "Save Data" to persist to Firebase!');
+      console.log('==========================');
+
+      alert(`✅ Pending match created successfully!${notifMsg}\n\nThe match will appear in the Pending Matches section below, where either captain can enter the results when the match is played.\n\n⚠️ IMPORTANT: Click the "Save Data" button to save this to the database.`);
+
+    } catch (error) {
+      console.error('Error creating pending match:', error);
+      console.error('Error details:', {
+        message: error.message,
+        stack: error.stack,
+        formData: pendingMatchFormData
+      });
+      alert(`❌ Error creating pending match: ${error.message}\n\nPlease try again. If the problem persists, contact the tournament director.`);
     }
   };
 
@@ -878,15 +1181,26 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
           <Calendar className="w-6 h-6" />
           Record Match Result
         </h2>
-        {isAuthenticated && !showMatchForm && (userRole !== 'captain' || userTeamId) && (
-          <button
-            onClick={handleAddNewMatch}
-            className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 flex items-center gap-2"
-          >
-            <Plus className="w-4 h-4" />
-            Add Match
-          </button>
-        )}
+        <div className="flex gap-2">
+          {isAuthenticated && !showMatchForm && !showPendingMatchForm && userRole === 'captain' && userTeamId && (
+            <button
+              onClick={() => setShowPendingMatchForm(true)}
+              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 flex items-center gap-2"
+            >
+              <Calendar className="w-4 h-4" />
+              Schedule Match
+            </button>
+          )}
+          {isAuthenticated && !showMatchForm && !showPendingMatchForm && (userRole !== 'captain' || userTeamId) && (
+            <button
+              onClick={handleAddNewMatch}
+              className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 flex items-center gap-2"
+            >
+              <Plus className="w-4 h-4" />
+              Record Match Results
+            </button>
+          )}
+        </div>
       </div>
 
       {!isAuthenticated && (
@@ -902,6 +1216,259 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
             <br />
             Please contact the tournament directors to be assigned to a team before you can enter matches.
           </p>
+        </div>
+      )}
+
+      {/* Create Pending Match Form - For captains to schedule matches directly */}
+      {showPendingMatchForm && userRole === 'captain' && userTeamId && (
+        <div className="bg-blue-50 border-2 border-blue-300 rounded-lg p-6 mb-6">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-xl font-bold text-blue-800 flex items-center gap-2">
+              <Calendar className="w-5 h-5" />
+              Schedule Match with Another Team
+            </h3>
+            <button
+              onClick={() => {
+                setShowPendingMatchForm(false);
+                setPendingMatchFormData({
+                  opponentTeamId: '',
+                  scheduledDate: new Date().toISOString().split('T')[0],
+                  level: '7.0',
+                  team1Players: [],
+                  team2Players: [],
+                  notes: ''
+                });
+              }}
+              className="text-gray-500 hover:text-gray-700"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          <div className="bg-blue-100 border border-blue-200 rounded p-3 mb-4">
+            <p className="text-sm text-blue-900">
+              <strong>Use this to add a match you've arranged directly with another team.</strong>
+              <br />
+              The opponent captain will be notified, and either captain can enter results when the match is played.
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            {/* Opponent Team Selection */}
+            <div>
+              <label className="block text-sm font-semibold mb-1">Opponent Team *</label>
+              <select
+                value={pendingMatchFormData.opponentTeamId}
+                onChange={(e) => setPendingMatchFormData({ ...pendingMatchFormData, opponentTeamId: e.target.value, team2Players: [] })}
+                className="w-full px-3 py-2 border rounded"
+              >
+                <option value="">Select opponent team...</option>
+                {teams
+                  .filter(t => t.id !== userTeamId)
+                  .sort((a, b) => a.name.localeCompare(b.name))
+                  .map(team => (
+                    <option key={team.id} value={team.id}>
+                      {team.name}
+                    </option>
+                  ))}
+              </select>
+            </div>
+
+            {/* Date and Level */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-semibold mb-1">Match Date *</label>
+                <input
+                  type="date"
+                  value={pendingMatchFormData.scheduledDate}
+                  onChange={(e) => setPendingMatchFormData({ ...pendingMatchFormData, scheduledDate: e.target.value })}
+                  className="w-full px-3 py-2 border rounded"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold mb-1">Match Level *</label>
+                <select
+                  value={pendingMatchFormData.level}
+                  onChange={(e) => setPendingMatchFormData({ ...pendingMatchFormData, level: e.target.value })}
+                  className="w-full px-3 py-2 border rounded"
+                >
+                  <option value="7.0">7.0</option>
+                  <option value="8.0">8.0</option>
+                  <option value="9.0">9.0</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Your Team Players */}
+            <div>
+              <label className="block text-sm font-semibold mb-2">
+                Your Team Players * (Select 2)
+              </label>
+              <div className="max-h-60 overflow-y-auto p-3 border rounded bg-white space-y-1">
+                {players
+                  .filter(p => p.teamId === userTeamId)
+                  .sort((a, b) => `${a.lastName}${a.firstName}`.localeCompare(`${b.lastName}${b.firstName}`))
+                  .map(player => (
+                    <label key={player.id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
+                      <input
+                        type="checkbox"
+                        checked={pendingMatchFormData.team1Players.includes(player.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            // Limit to 2 players
+                            if (pendingMatchFormData.team1Players.length >= 2) {
+                              alert('⚠️ You can only select 2 players for doubles.');
+                              return;
+                            }
+                            setPendingMatchFormData({
+                              ...pendingMatchFormData,
+                              team1Players: [...pendingMatchFormData.team1Players, player.id]
+                            });
+                          } else {
+                            setPendingMatchFormData({
+                              ...pendingMatchFormData,
+                              team1Players: pendingMatchFormData.team1Players.filter(id => id !== player.id)
+                            });
+                          }
+                        }}
+                        className="rounded"
+                      />
+                      <span className="text-sm">
+                        {player.firstName} {player.lastName}
+                        <span className="text-gray-500 ml-2">
+                          ({player.gender}) {player.ntrpRating} NTRP
+                        </span>
+                      </span>
+                    </label>
+                  ))}
+              </div>
+              <div className="mt-2 space-y-1">
+                <p className="text-sm text-gray-600">
+                  Selected: {pendingMatchFormData.team1Players.length} / 2 players
+                </p>
+                {pendingMatchFormData.team1Players.length === 2 && (
+                  <div className={`text-sm font-medium ${
+                    calculateCombinedNTRP(pendingMatchFormData.team1Players) <= parseFloat(pendingMatchFormData.level)
+                      ? 'text-green-600'
+                      : 'text-red-600'
+                  }`}>
+                    Combined NTRP: {calculateCombinedNTRP(pendingMatchFormData.team1Players).toFixed(1)}
+                    {calculateCombinedNTRP(pendingMatchFormData.team1Players) > parseFloat(pendingMatchFormData.level) && (
+                      <span className="block text-xs mt-0.5">
+                        ⚠️ Exceeds match level ({pendingMatchFormData.level})
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Opponent Team Players (Optional) */}
+            {pendingMatchFormData.opponentTeamId && (
+              <div>
+                <label className="block text-sm font-semibold mb-2">
+                  Opponent Team Players (Optional - can be set later)
+                </label>
+                <div className="max-h-60 overflow-y-auto p-3 border rounded bg-white space-y-1">
+                  {players
+                    .filter(p => p.teamId === parseInt(pendingMatchFormData.opponentTeamId))
+                    .sort((a, b) => `${a.lastName}${a.firstName}`.localeCompare(`${b.lastName}${b.firstName}`))
+                    .map(player => (
+                      <label key={player.id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
+                        <input
+                          type="checkbox"
+                          checked={pendingMatchFormData.team2Players.includes(player.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              // Limit to 2 players
+                              if (pendingMatchFormData.team2Players.length >= 2) {
+                                alert('⚠️ You can only select 2 players for doubles.');
+                                return;
+                              }
+                              setPendingMatchFormData({
+                                ...pendingMatchFormData,
+                                team2Players: [...pendingMatchFormData.team2Players, player.id]
+                              });
+                            } else {
+                              setPendingMatchFormData({
+                                ...pendingMatchFormData,
+                                team2Players: pendingMatchFormData.team2Players.filter(id => id !== player.id)
+                              });
+                            }
+                          }}
+                          className="rounded"
+                        />
+                        <span className="text-sm">
+                          {player.firstName} {player.lastName}
+                          <span className="text-gray-500 ml-2">
+                            ({player.gender}) {player.ntrpRating} NTRP
+                          </span>
+                        </span>
+                      </label>
+                    ))}
+                </div>
+                <div className="mt-2 space-y-1">
+                  <p className="text-sm text-gray-600">
+                    Selected: {pendingMatchFormData.team2Players.length} / 2 players
+                  </p>
+                  {pendingMatchFormData.team2Players.length === 2 && (
+                    <div className={`text-sm font-medium ${
+                      calculateCombinedNTRP(pendingMatchFormData.team2Players) <= parseFloat(pendingMatchFormData.level)
+                        ? 'text-green-600'
+                        : 'text-red-600'
+                    }`}>
+                      Combined NTRP: {calculateCombinedNTRP(pendingMatchFormData.team2Players).toFixed(1)}
+                      {calculateCombinedNTRP(pendingMatchFormData.team2Players) > parseFloat(pendingMatchFormData.level) && (
+                        <span className="block text-xs mt-0.5">
+                          ⚠️ Exceeds match level ({pendingMatchFormData.level})
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Notes */}
+            <div>
+              <label className="block text-sm font-semibold mb-1">Notes (Optional)</label>
+              <textarea
+                value={pendingMatchFormData.notes}
+                onChange={(e) => setPendingMatchFormData({ ...pendingMatchFormData, notes: e.target.value })}
+                className="w-full px-3 py-2 border rounded"
+                rows="2"
+                placeholder="Location, time, or other details..."
+              />
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex gap-2 justify-end pt-2">
+              <button
+                onClick={() => {
+                  setShowPendingMatchForm(false);
+                  setPendingMatchFormData({
+                    opponentTeamId: '',
+                    scheduledDate: new Date().toISOString().split('T')[0],
+                    level: '7.0',
+                    team1Players: [],
+                    team2Players: [],
+                    notes: ''
+                  });
+                }}
+                className="px-4 py-2 border rounded hover:bg-gray-100"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreatePendingMatch}
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center gap-2"
+              >
+                <Check className="w-4 h-4" />
+                Create Pending Match
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

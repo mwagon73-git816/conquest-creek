@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Users, Plus, Edit, Trash2, Check, X, Eye, EyeOff } from 'lucide-react';
 import { ACTION_TYPES } from '../services/activityLogger';
+import { isSmsEnabled } from '../firebase';
 
 const CaptainManagement = ({ captains, setCaptains, teams, setTeams, isAuthenticated, addLog, players }) => {
   const [showForm, setShowForm] = useState(false);
@@ -12,7 +13,8 @@ const CaptainManagement = ({ captains, setCaptains, teams, setTeams, isAuthentic
     email: '',
     phone: '',
     teamId: '',
-    status: 'active'
+    status: 'active',
+    smsEnabled: false
   });
   const [showPassword, setShowPassword] = useState(false);
   const [newCaptainCredentials, setNewCaptainCredentials] = useState(null);
@@ -27,7 +29,8 @@ const CaptainManagement = ({ captains, setCaptains, teams, setTeams, isAuthentic
       email: '',
       phone: '',
       teamId: '',
-      status: 'active'
+      status: 'active',
+      smsEnabled: false
     });
     setNewCaptainCredentials(null);
   };
@@ -42,7 +45,8 @@ const CaptainManagement = ({ captains, setCaptains, teams, setTeams, isAuthentic
       email: captain.email || '',
       phone: captain.phone || '',
       teamId: captain.teamId,
-      status: captain.status
+      status: captain.status,
+      smsEnabled: captain.smsEnabled || false
     });
     setNewCaptainCredentials(null);
   };
@@ -193,7 +197,8 @@ const CaptainManagement = ({ captains, setCaptains, teams, setTeams, isAuthentic
         email: formData.email,
         phone: formData.phone,
         teamId: selectedTeamId,
-        status: formData.status
+        status: formData.status,
+        smsEnabled: formData.smsEnabled || false
       };
       setCaptains([...captains, newCaptain]);
 
@@ -241,7 +246,8 @@ const CaptainManagement = ({ captains, setCaptains, teams, setTeams, isAuthentic
         email: '',
         phone: '',
         teamId: '',
-        status: 'active'
+        status: 'active',
+        smsEnabled: false
       });
     }
   };
@@ -401,17 +407,41 @@ const CaptainManagement = ({ captains, setCaptains, teams, setTeams, isAuthentic
               </p>
             </div>
 
-            <div>
-              <label className="block text-sm font-semibold mb-1">Cell Phone (Optional)</label>
-              <input
-                type="tel"
-                value={formData.phone}
-                onChange={(e) => handlePhoneChange(e.target.value)}
-                className="w-full px-3 py-2 border rounded"
-                placeholder="(XXX) XXX-XXXX"
-                maxLength="14"
-              />
-            </div>
+            {/* SMS Fields - Hidden when feature flag is disabled */}
+            {isSmsEnabled() && (
+              <div>
+                <label className="block text-sm font-semibold mb-1">Cell Phone (Optional)</label>
+                <input
+                  type="tel"
+                  value={formData.phone}
+                  onChange={(e) => handlePhoneChange(e.target.value)}
+                  className="w-full px-3 py-2 border rounded"
+                  placeholder="(XXX) XXX-XXXX"
+                  maxLength="14"
+                />
+                <div className="mt-2 flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="smsEnabled"
+                    checked={formData.smsEnabled}
+                    onChange={(e) => {
+                      if (e.target.checked && !formData.phone) {
+                        alert('⚠️ Please enter a phone number before enabling SMS notifications.');
+                        return;
+                      }
+                      setFormData({ ...formData, smsEnabled: e.target.checked });
+                    }}
+                    className="w-4 h-4 cursor-pointer"
+                  />
+                  <label htmlFor="smsEnabled" className="text-sm text-gray-700 cursor-pointer">
+                    Enable SMS text notifications for matches and challenges
+                  </label>
+                </div>
+                <p className="text-xs text-gray-600 mt-1">
+                  Receive instant text alerts when matches are entered or challenges are created
+                </p>
+              </div>
+            )}
 
             <div>
               <label className="block text-sm font-semibold mb-1">Assigned Team (Optional)</label>

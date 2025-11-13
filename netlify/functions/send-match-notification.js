@@ -26,22 +26,31 @@ exports.handler = async (event, context) => {
       matchScores,
       matchDate,
       matchLevel,
-      emailType, // 'confirmation', 'verification', or 'edit'
+      emailType, // 'confirmation', 'verification', 'edit', or 'pending_match_created'
       editorName // Name of person who edited (only for 'edit' type)
     } = data;
 
-    if (!recipientEmail || !senderTeam || !recipientTeam || !matchScores || !matchDate || !emailType) {
+    // Validate required fields (matchScores not required for pending_match_created)
+    if (!recipientEmail || !senderTeam || !recipientTeam || !matchDate || !emailType) {
       return {
         statusCode: 400,
         body: JSON.stringify({ error: 'Missing required fields' })
       };
     }
 
-    // Validate email type
-    if (emailType !== 'confirmation' && emailType !== 'verification' && emailType !== 'edit') {
+    // matchScores required for all types except pending_match_created
+    if (emailType !== 'pending_match_created' && !matchScores) {
       return {
         statusCode: 400,
-        body: JSON.stringify({ error: 'Invalid emailType. Must be "confirmation", "verification", or "edit"' })
+        body: JSON.stringify({ error: 'Missing required field: matchScores' })
+      };
+    }
+
+    // Validate email type
+    if (emailType !== 'confirmation' && emailType !== 'verification' && emailType !== 'edit' && emailType !== 'pending_match_created') {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ error: 'Invalid emailType. Must be "confirmation", "verification", "edit", or "pending_match_created"' })
       };
     }
 
@@ -126,6 +135,24 @@ Updated Match Details:
 This is a notification that the match result has been modified. Please review the updated information in the Conquest of the Creek tournament app.
 
 If you have any questions about this change, please contact the other team's captain or the tournament directors.
+
+Thank you,
+Conquest of the Creek Tournament System`;
+    } else if (emailType === 'pending_match_created') {
+      // Email to opponent captain when a pending match is scheduled directly
+      subject = `Match Scheduled - ${senderTeam} vs ${recipientTeam}`;
+      textBody = `Hi ${recipientName || 'Captain'},
+
+${senderTeam} has scheduled a match with your team:
+
+Match Details:
+- Teams: ${senderTeam} vs ${recipientTeam}
+- Level: ${matchLevel || 'Not specified'}
+- Scheduled Date: ${formattedDate}
+
+This match has been added to the tournament schedule. When the match is played, either captain can enter the results in the Conquest of the Creek tournament app.
+
+If you have any questions about this match, please contact the other team's captain or the tournament directors.
 
 Thank you,
 Conquest of the Creek Tournament System`;

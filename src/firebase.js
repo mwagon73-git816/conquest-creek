@@ -30,5 +30,24 @@ export const COLLECTIONS = {
   CHALLENGES: 'challenges'
 };
 
+/**
+ * SMS Feature Flag
+ *
+ * SMS feature implemented but disabled pending regulatory approval.
+ * Set VITE_SMS_ENABLED=true in environment variables to activate when approved.
+ *
+ * When enabled:
+ * - SMS notifications will be sent via Twilio for matches and challenges
+ * - Phone number fields will appear in captain settings
+ * - SMS preference toggles will be visible in the UI
+ *
+ * @returns {boolean} True if SMS features should be enabled
+ */
+export const isSmsEnabled = () => {
+  const enabled = import.meta.env.VITE_SMS_ENABLED === 'true';
+  return enabled;
+};
+
 console.log(`🔥 Firebase: ${import.meta.env.MODE} mode`);
 console.log(`📊 Project: ${firebaseConfig.projectId}`);
+console.log(`📱 SMS Features: ${isSmsEnabled() ? 'ENABLED' : 'DISABLED'}`);
