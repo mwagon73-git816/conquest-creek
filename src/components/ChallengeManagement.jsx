@@ -109,13 +109,24 @@ export default function ChallengeManagement({
   // Get all challenges with role-based filtering
   const getAllChallenges = () => {
     return challenges.filter(challenge => {
-      // Captain restriction: only show challenges involving their team
+      // Directors see all challenges
+      if (userRole === 'director') return true;
+
+      // Captains see:
+      // - ALL open challenges (so they can accept any challenge)
+      // - Only accepted challenges involving their team (scheduled matches)
       if (userRole === 'captain' && userTeamId) {
+        if (challenge.status === 'open') {
+          return true; // Show all open challenges
+        }
+        // For accepted/other statuses, only show challenges involving their team
         const captainTeamInvolved =
           challenge.challengerTeamId === userTeamId ||
           challenge.challengedTeamId === userTeamId;
-        if (!captainTeamInvolved) return false;
+        return captainTeamInvolved;
       }
+
+      // Public users see all challenges
       return true;
     });
   };
