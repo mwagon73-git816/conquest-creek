@@ -7,6 +7,15 @@ const MatchPhotos = ({ photos, teams, isAuthenticated, onDeletePhoto }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
 
+  // Set random starting index when photos are loaded
+  useEffect(() => {
+    if (photos.length > 0) {
+      const randomIndex = Math.floor(Math.random() * photos.length);
+      setCurrentIndex(randomIndex);
+    }
+  }, [photos.length]);
+
+  // Auto-play carousel
   useEffect(() => {
     if (photos.length === 0 || isPaused) return;
 
