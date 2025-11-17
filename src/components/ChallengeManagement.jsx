@@ -31,7 +31,7 @@ export default function ChallengeManagement({
   const [showFilters, setShowFilters] = useState(false);
   const [selectedTeams, setSelectedTeams] = useState([]);
   const [selectedPlayers, setSelectedPlayers] = useState([]);
-  const [statusFilter, setStatusFilter] = useState('all'); // 'all', 'open', 'accepted'
+  const [statusFilter, setStatusFilter] = useState('open'); // 'all', 'open', 'accepted' - defaults to 'open'
 
   // Challenge creation form
   const [createFormData, setCreateFormData] = useState({
