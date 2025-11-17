@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, X, Check, Calendar, Users, Swords, Trophy, Clock, AlertCircle, Trash2, Edit2 } from 'lucide-react';
+import { Plus, X, Check, Calendar, Users, Swords, Trophy, Clock, AlertCircle, Trash2, Edit2, Filter, ChevronDown, ChevronUp } from 'lucide-react';
 import { ACTION_TYPES, createLogEntry } from '../services/activityLogger';
 import { formatDate } from '../utils/formatters';
 import { tournamentStorage } from '../services/storage';
 import { isSmsEnabled } from '../firebase';
+import TeamLogo from './TeamLogo';
 
 export default function ChallengeManagement({
   teams,
@@ -25,6 +26,12 @@ export default function ChallengeManagement({
   const [showEditForm, setShowEditForm] = useState(false);
   const [selectedChallenge, setSelectedChallenge] = useState(null);
   const [editingChallenge, setEditingChallenge] = useState(null);
+
+  // Filter states
+  const [showFilters, setShowFilters] = useState(false);
+  const [selectedTeams, setSelectedTeams] = useState([]);
+  const [selectedPlayers, setSelectedPlayers] = useState([]);
+  const [statusFilter, setStatusFilter] = useState('all'); // 'all', 'open', 'accepted'
 
   // Challenge creation form
   const [createFormData, setCreateFormData] = useState({
@@ -75,9 +82,83 @@ export default function ChallengeManagement({
     return { name: 'Captain', role: userRole };
   };
 
-  // Filter challenges based on user role
+  // Filter handler functions
+  const handleTeamToggle = (teamId) => {
+    if (selectedTeams.includes(teamId)) {
+      setSelectedTeams(selectedTeams.filter(id => id !== teamId));
+    } else {
+      setSelectedTeams([...selectedTeams, teamId]);
+    }
+  };
+
+  const handlePlayerToggle = (playerId) => {
+    if (selectedPlayers.includes(playerId)) {
+      setSelectedPlayers(selectedPlayers.filter(id => id !== playerId));
+    } else {
+      setSelectedPlayers([...selectedPlayers, playerId]);
+    }
+  };
+
+  const handleClearFilters = () => {
+    setSelectedTeams([]);
+    setSelectedPlayers([]);
+  };
+
+  const hasActiveFilters = selectedTeams.length > 0 || selectedPlayers.length > 0;
+
+  // Get all challenges with role-based filtering
+  const getAllChallenges = () => {
+    return challenges.filter(challenge => {
+      // Captain restriction: only show challenges involving their team
+      if (userRole === 'captain' && userTeamId) {
+        const captainTeamInvolved =
+          challenge.challengerTeamId === userTeamId ||
+          challenge.challengedTeamId === userTeamId;
+        if (!captainTeamInvolved) return false;
+      }
+      return true;
+    });
+  };
+
+  // Apply filters to challenges
+  const getFilteredChallenges = () => {
+    let filteredList = getAllChallenges();
+
+    // Status filter
+    if (statusFilter !== 'all') {
+      filteredList = filteredList.filter(c => c.status === statusFilter);
+    }
+
+    // Team filter
+    if (selectedTeams.length > 0) {
+      filteredList = filteredList.filter(challenge => {
+        const challengeHasSelectedTeam =
+          selectedTeams.includes(challenge.challengerTeamId) ||
+          (challenge.challengedTeamId && selectedTeams.includes(challenge.challengedTeamId));
+        return challengeHasSelectedTeam;
+      });
+    }
+
+    // Player filter
+    if (selectedPlayers.length > 0) {
+      filteredList = filteredList.filter(challenge => {
+        const challengePlayers = [
+          ...(challenge.challengerPlayers || []),
+          ...(challenge.challengedPlayers || [])
+        ];
+        const challengeHasSelectedPlayer = selectedPlayers.some(playerId =>
+          challengePlayers.includes(playerId)
+        );
+        return challengeHasSelectedPlayer;
+      });
+    }
+
+    return filteredList;
+  };
+
+  // Legacy function for backward compatibility
   const getOpenChallenges = () => {
-    return challenges.filter(c => c.status === 'open');
+    return getFilteredChallenges().filter(c => c.status === 'open');
   };
 
   // Get team roster for player selection
@@ -502,6 +583,156 @@ export default function ChallengeManagement({
         )}
       </div>
 
+      {/* Filter Section */}
+      <div className="bg-white rounded-lg shadow p-4">
+        {/* Status Filter Dropdown */}
+        <div className="mb-4">
+          <label className="block text-sm font-medium mb-2">Filter by Status:</label>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="all">All Challenges</option>
+            <option value="open">Open Only</option>
+            <option value="accepted">Accepted Only</option>
+          </select>
+        </div>
+
+        {/* Team/Player Filters Section */}
+        <div>
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-100 hover:bg-blue-200 text-blue-800 rounded-lg transition-colors"
+          >
+            <Filter className="w-4 h-4" />
+            <span className="font-semibold">
+              {showFilters ? 'Hide Filters' : 'Show Team/Player Filters'}
+            </span>
+            {hasActiveFilters && (
+              <span className="bg-blue-600 text-white text-xs px-2 py-1 rounded-full">
+                {selectedTeams.length + selectedPlayers.length}
+              </span>
+            )}
+            {showFilters ? (
+              <ChevronUp className="w-4 h-4" />
+            ) : (
+              <ChevronDown className="w-4 h-4" />
+            )}
+          </button>
+
+          {showFilters && (
+            <div className="mt-3 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Team Filter */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-semibold text-gray-700">
+                      Filter by Team
+                    </label>
+                    {selectedTeams.length > 0 && (
+                      <span className="text-xs text-blue-600 font-medium">
+                        {selectedTeams.length} selected
+                      </span>
+                    )}
+                  </div>
+                  <div className="bg-white border border-blue-200 rounded p-3 max-h-48 overflow-y-auto">
+                    {teams.length === 0 ? (
+                      <p className="text-sm text-gray-500">No teams available</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {teams.map(team => (
+                          <label
+                            key={team.id}
+                            className="flex items-center gap-2 cursor-pointer hover:bg-blue-50 p-1 rounded"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedTeams.includes(team.id)}
+                              onChange={() => handleTeamToggle(team.id)}
+                              className="w-4 h-4 text-blue-600"
+                            />
+                            <TeamLogo team={team} size="sm" showBorder={!!team.logo} />
+                            <span className="text-sm">{team.name}</span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Player Filter */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-semibold text-gray-700">
+                      Filter by Player
+                    </label>
+                    {selectedPlayers.length > 0 && (
+                      <span className="text-xs text-blue-600 font-medium">
+                        {selectedPlayers.length} selected
+                      </span>
+                    )}
+                  </div>
+                  <div className="bg-white border border-blue-200 rounded p-3 max-h-48 overflow-y-auto">
+                    {!players || players.length === 0 ? (
+                      <p className="text-sm text-gray-500">No players available</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {players
+                          .filter(p => p.status === 'active')
+                          .sort((a, b) => {
+                            const nameA = `${a.lastName} ${a.firstName}`.toLowerCase();
+                            const nameB = `${b.lastName} ${b.firstName}`.toLowerCase();
+                            return nameA.localeCompare(nameB);
+                          })
+                          .map(player => (
+                            <label
+                              key={player.id}
+                              className="flex items-center gap-2 cursor-pointer hover:bg-blue-50 p-1 rounded"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedPlayers.includes(player.id)}
+                                onChange={() => handlePlayerToggle(player.id)}
+                                className="w-4 h-4 text-blue-600"
+                              />
+                              <span className="text-sm">
+                                {player.lastName}, {player.firstName}
+                                <span className="text-xs text-gray-500 ml-1">
+                                  ({player.gender} {player.ntrpRating})
+                                </span>
+                              </span>
+                            </label>
+                          ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Clear Filters Button */}
+              {hasActiveFilters && (
+                <div className="mt-4 flex justify-end">
+                  <button
+                    onClick={handleClearFilters}
+                    className="px-4 py-2 bg-red-100 hover:bg-red-200 text-red-800 rounded-lg text-sm font-semibold transition-colors"
+                  >
+                    Clear All Filters
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Challenge Count Display */}
+        {(hasActiveFilters || statusFilter !== 'all') && (
+          <div className="mt-3 px-3 py-2 bg-blue-100 text-blue-800 rounded text-sm font-semibold">
+            Showing {getFilteredChallenges().length} of {getAllChallenges().length} challenges
+          </div>
+        )}
+      </div>
+
       {/* Create Challenge Form */}
       {showCreateForm && (
         <div className="bg-white border-2 border-blue-500 rounded-lg p-6 shadow-lg">
@@ -691,49 +922,108 @@ export default function ChallengeManagement({
         </div>
       )}
 
-      {/* Open Challenges */}
+      {/* Challenges List */}
       <div className="bg-white rounded-lg shadow">
         <div className="px-6 py-4 border-b border-gray-200">
           <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
             <Trophy className="w-5 h-5 text-yellow-600" />
-            Open Challenges ({getOpenChallenges().length})
+            {statusFilter === 'open' ? 'Open Challenges' :
+             statusFilter === 'accepted' ? 'Accepted Challenges' :
+             'All Challenges'} ({getFilteredChallenges().length})
           </h3>
         </div>
 
         <div className="divide-y divide-gray-200">
-          {getOpenChallenges().length === 0 ? (
+          {getFilteredChallenges().length === 0 ? (
             <div className="px-6 py-8 text-center text-gray-500">
               <AlertCircle className="w-12 h-12 mx-auto mb-3 text-gray-400" />
-              <p>No open challenges at this time</p>
-              {canCreateChallenge() && (
+              <p>
+                {statusFilter === 'open' ? 'No open challenges at this time' :
+                 statusFilter === 'accepted' ? 'No accepted challenges' :
+                 hasActiveFilters ? 'No challenges match the selected filters' :
+                 'No challenges at this time'}
+              </p>
+              {canCreateChallenge() && statusFilter === 'open' && !hasActiveFilters && (
                 <p className="text-sm mt-1">Create a challenge to get started!</p>
               )}
             </div>
           ) : (
-            getOpenChallenges().map(challenge => (
-              <div key={challenge.id} className="px-6 py-4 hover:bg-gray-50 transition-colors">
+            getFilteredChallenges().map(challenge => (
+              <div key={challenge.id} className={`px-6 py-4 hover:bg-gray-50 transition-colors ${
+                challenge.status === 'accepted' ? 'bg-green-50' : ''
+              }`}>
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
-                      <h4 className="text-lg font-semibold text-gray-900">
-                        {getTeamName(challenge.challengerTeamId)} - Open Challenge
-                      </h4>
+                      {challenge.status === 'accepted' && challenge.challengedTeamId ? (
+                        <>
+                          <h4 className="text-lg font-semibold text-gray-900">
+                            {getTeamName(challenge.challengerTeamId)} vs {getTeamName(challenge.challengedTeamId)}
+                          </h4>
+                          <span className="px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded flex items-center gap-1">
+                            <Check className="w-3 h-3" />
+                            Accepted
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <h4 className="text-lg font-semibold text-gray-900">
+                            {getTeamName(challenge.challengerTeamId)} - Open Challenge
+                          </h4>
+                          <span className="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs font-medium rounded flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            Open
+                          </span>
+                        </>
+                      )}
                       <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded">
-                        Level {challenge.proposedLevel}
+                        Level {challenge.status === 'accepted' ? challenge.acceptedLevel : challenge.proposedLevel}
                       </span>
                     </div>
 
                     <div className="space-y-1 text-sm text-gray-600">
-                      {challenge.proposedDate && (
+                      {/* Show accepted date for accepted challenges, proposed date for open challenges */}
+                      {challenge.status === 'accepted' && challenge.acceptedDate ? (
+                        <div className="flex items-center gap-2">
+                          <Calendar className="w-4 h-4 text-green-600" />
+                          <span className="font-medium text-green-600">Match Date: {formatDate(challenge.acceptedDate)}</span>
+                        </div>
+                      ) : challenge.proposedDate ? (
                         <div className="flex items-center gap-2">
                           <Calendar className="w-4 h-4" />
                           <span>Proposed Match Date: {formatDate(challenge.proposedDate)}</span>
                         </div>
+                      ) : null}
+
+                      {/* Show both teams' players for accepted challenges */}
+                      {challenge.status === 'accepted' && challenge.challengedTeamId ? (
+                        <div className="grid grid-cols-2 gap-4 mt-2">
+                          <div>
+                            <div className="flex items-center gap-2 font-semibold text-gray-700 mb-1">
+                              <Users className="w-4 h-4" />
+                              <span>{getTeamName(challenge.challengerTeamId)}</span>
+                            </div>
+                            <div className="ml-6 text-xs">
+                              {getPlayerNames(challenge.challengerPlayers)}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2 font-semibold text-gray-700 mb-1">
+                              <Users className="w-4 h-4" />
+                              <span>{getTeamName(challenge.challengedTeamId)}</span>
+                            </div>
+                            <div className="ml-6 text-xs">
+                              {getPlayerNames(challenge.challengedPlayers)}
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <Users className="w-4 h-4" />
+                          <span>{getPlayerNames(challenge.challengerPlayers)}</span>
+                        </div>
                       )}
-                      <div className="flex items-center gap-2">
-                        <Users className="w-4 h-4" />
-                        <span>{getPlayerNames(challenge.challengerPlayers)}</span>
-                      </div>
+
                       {challenge.combinedNTRP && (
                         <div className="flex items-center gap-2">
                           <Trophy className="w-4 h-4 text-green-600" />
@@ -747,8 +1037,16 @@ export default function ChallengeManagement({
                           <strong>Notes:</strong> {challenge.notes}
                         </div>
                       )}
+                      {challenge.acceptNotes && (
+                        <div className="mt-2 text-gray-700">
+                          <strong>Accept Notes:</strong> {challenge.acceptNotes}
+                        </div>
+                      )}
                       <div className="text-xs text-gray-500 mt-2">
                         Created by {challenge.createdBy} on {formatDate(challenge.createdAt)}
+                        {challenge.status === 'accepted' && challenge.acceptedBy && (
+                          <span className="ml-2">• Accepted by {challenge.acceptedBy} on {formatDate(challenge.acceptedAt)}</span>
+                        )}
                       </div>
                     </div>
                   </div>
