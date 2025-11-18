@@ -1,7 +1,7 @@
 import React from 'react';
 import { Save } from 'lucide-react';
 import { APP_VERSION } from '../version';
-import tennisCourtImage from '../assets/tennis-court.jpg';
+import { getSeasonalTheme, getThemeTextColors, getSeasonalMessage } from '../utils/seasonalTheme';
 
 const INSTAGRAM_URL = 'https://instagram.com/conquestofthecreek';
 
@@ -49,14 +49,14 @@ const InstagramLogo = ({ className = "w-5 h-5" }) => (
   </svg>
 );
 
-const Header = ({ 
-  isAuthenticated, 
-  loginName, 
-  userRole, 
-  saveStatus, 
-  handleLogout, 
+const Header = ({
+  isAuthenticated,
+  loginName,
+  userRole,
+  saveStatus,
+  handleLogout,
   setShowLogin,
-  onManualSave 
+  onManualSave
 }) => {
   const getRoleDisplay = () => {
     if (userRole === 'director') return 'Director';
@@ -64,11 +64,16 @@ const Header = ({
     return '';
   };
 
+  // Get current seasonal theme
+  const theme = getSeasonalTheme();
+  const textColors = getThemeTextColors(theme.name);
+  const seasonalMessage = getSeasonalMessage(theme.name);
+
   return (
     <div
       className="text-white rounded-lg shadow-lg p-6 mb-6 relative overflow-hidden"
       style={{
-        backgroundImage: `linear-gradient(to right, rgba(37, 99, 235, 0.85), rgba(30, 64, 175, 0.85)), url(${tennisCourtImage})`,
+        backgroundImage: `${theme.gradient}, url(${theme.image})`,
         backgroundSize: 'cover',
         backgroundPosition: 'center',
         backgroundBlendMode: 'overlay'
@@ -77,8 +82,11 @@ const Header = ({
       <div className="flex justify-between items-start relative z-10">
         <div>
           <h1 className="text-3xl font-bold mb-2">Conquest of the Creek</h1>
-          <p className="text-blue-100">Tournament Tracker • November 2025 - February 2026</p>
-          <p className="text-sm text-blue-200 mt-2">Silver Creek Valley Country Club</p>
+          <p className={textColors.subtitle}>Tournament Tracker • November 2025 - February 2026</p>
+          {seasonalMessage && (
+            <p className="text-sm font-semibold text-white mt-1">{seasonalMessage}</p>
+          )}
+          <p className={`text-sm ${textColors.secondary} mt-2`}>Silver Creek Valley Country Club</p>
           {/* Instagram Link */}
           <a
             href={INSTAGRAM_URL}
@@ -113,18 +121,18 @@ const Header = ({
               
               {/* Save Status */}
               {saveStatus && (
-                <div className="text-xs text-blue-100 bg-blue-700 bg-opacity-50 px-2 py-1 rounded">
+                <div className={`text-xs ${textColors.subtitle} ${textColors.badge} bg-opacity-50 px-2 py-1 rounded`}>
                   {saveStatus}
                 </div>
               )}
-              
+
               <button
                 onClick={handleLogout}
                 className="bg-white text-blue-600 px-3 py-1 rounded text-sm hover:bg-blue-50"
               >
                 Logout
               </button>
-              <span className="text-xs bg-blue-700 bg-opacity-70 px-2 py-1 rounded">v{APP_VERSION}</span>
+              <span className={`text-xs ${textColors.badge} px-2 py-1 rounded`}>v{APP_VERSION}</span>
             </>
           ) : (
             <>
@@ -134,7 +142,7 @@ const Header = ({
               >
                 Login
               </button>
-              <span className="text-xs bg-blue-700 bg-opacity-70 px-2 py-1 rounded">v{APP_VERSION}</span>
+              <span className={`text-xs ${textColors.badge} px-2 py-1 rounded`}>v{APP_VERSION}</span>
             </>
           )}
         </div>

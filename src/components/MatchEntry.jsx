@@ -4,6 +4,7 @@ import { ACTION_TYPES } from '../services/activityLogger';
 import { formatNTRP, formatDynamic, formatDate } from '../utils/formatters';
 import { tournamentStorage, imageStorage } from '../services/storage';
 import { isSmsEnabled } from '../firebase';
+import { generateMatchId, generateChallengeId } from '../utils/idGenerator';
 
 const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange, isAuthenticated, setActiveTab, players, captains, onAddPhoto, loginName, userRole, userTeamId, editingMatch, setEditingMatch, addLog }) => {
   const [showMatchForm, setShowMatchForm] = useState(false);
@@ -449,8 +450,12 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
       console.log('📋 Creating pending match...');
 
       // Create the pending match (as an accepted challenge with origin='direct')
+      const generatedChallengeId = generateChallengeId(challenges || []);
+      console.log('🆔 Generated Challenge ID for pending match:', generatedChallengeId);
+
       const newPendingMatch = {
         id: Date.now(),
+        challengeId: generatedChallengeId,
         challengerTeamId: userTeamId, // Captain's team
         challengedTeamId: parseInt(pendingMatchFormData.opponentTeamId),
         status: 'accepted', // Goes directly to pending status
@@ -711,6 +716,19 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
     // For pending matches, generate a NEW match ID. For edits, use existing ID.
     const matchId = (editingMatch && !isPendingMatch) ? editingMatch.id : Date.now();
 
+    // Generate readable Match ID
+    const matchIdReadable = (editingMatch && !isPendingMatch && editingMatch.matchId)
+      ? editingMatch.matchId
+      : generateMatchId(matches);
+
+    console.log('🆔 Match ID Generation:', {
+      isNewMatch: !editingMatch || isPendingMatch,
+      isPendingMatch,
+      editingMatchId: editingMatch?.matchId,
+      generatedMatchId: matchIdReadable,
+      existingMatchesCount: matches.length
+    });
+
     const matchData = {
       date: matchFormData.date,
       level: matchFormData.level,
@@ -732,7 +750,9 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
       team2Players: matchFormData.team2Players,
       notes: matchFormData.notes.trim(),
       timestamp: new Date().toISOString(),
-      fromChallenge: isPendingMatch // Flag to indicate this came from a challenge
+      fromChallenge: isPendingMatch, // Flag to indicate this came from a challenge
+      matchId: matchIdReadable, // Readable Match ID
+      originChallengeId: isPendingMatch && editingMatch ? editingMatch.challengeId : null // Track original challenge ID
     };
 
     // Debug: Log match save information
@@ -771,6 +791,13 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
         id: matchId,
         ...matchData
       };
+      console.log('🆔 New Match Object:', {
+        id: newMatch.id,
+        matchId: newMatch.matchId,
+        originChallengeId: newMatch.originChallengeId,
+        timestamp: newMatch.timestamp,
+        hasMatchId: !!newMatch.matchId
+      });
       const updatedMatches = [...matches, newMatch];
       setMatches(updatedMatches);
       console.log('Updated matches count:', updatedMatches.length);
@@ -1604,15 +1631,54 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
                   <h3 className="text-xl font-bold">
                     {editingMatch && editingMatch.isPendingMatch ? 'Enter Match Results' : (editingMatch ? 'Edit Match' : 'Record New Match')}
                   </h3>
-                  {editingMatch && editingMatch.isPendingMatch && (
-                    <div className="mt-2 text-lg font-semibold text-gray-700 flex items-center gap-2">
-                      <span>{teams.find(t => t.id === parseInt(matchFormData.team1Id))?.name || 'Team 1'}</span>
-                      <span className="text-blue-600">vs</span>
-                      <span>{teams.find(t => t.id === parseInt(matchFormData.team2Id))?.name || 'Team 2'}</span>
-                      <span className="ml-3 px-2 py-1 bg-blue-100 text-blue-800 text-sm font-medium rounded">
-                        Level {matchFormData.level}
-                      </span>
+
+                  {/* Display IDs for existing matches */}
+                  {editingMatch && !editingMatch.isPendingMatch && (
+                    <div className="mt-1 flex items-center gap-3 text-xs text-gray-600 flex-wrap">
+                      {editingMatch.matchId && (
+                        <div className="font-mono bg-gray-100 px-2 py-1 rounded">
+                          <span className="font-semibold">Match ID:</span> {editingMatch.matchId}
+                        </div>
+                      )}
+                      {editingMatch.originChallengeId && (
+                        <div className="text-blue-600 bg-blue-50 px-2 py-1 rounded">
+                          From Challenge: {editingMatch.originChallengeId}
+                        </div>
+                      )}
+                      {editingMatch.timestamp && (
+                        <div className="flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          <span>Entered: {formatDate(editingMatch.timestamp)}</span>
+                        </div>
+                      )}
                     </div>
+                  )}
+
+                  {/* Display for pending matches */}
+                  {editingMatch && editingMatch.isPendingMatch && (
+                    <>
+                      <div className="mt-1 flex items-center gap-3 text-xs text-gray-600 flex-wrap">
+                        {editingMatch.challengeId && (
+                          <div className="font-mono bg-orange-100 px-2 py-1 rounded">
+                            <span className="font-semibold">Challenge ID:</span> {editingMatch.challengeId}
+                          </div>
+                        )}
+                        {editingMatch.createdAt && (
+                          <div className="flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            <span>Created: {formatDate(editingMatch.createdAt)}</span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="mt-2 text-lg font-semibold text-gray-700 flex items-center gap-2">
+                        <span>{teams.find(t => t.id === parseInt(matchFormData.team1Id))?.name || 'Team 1'}</span>
+                        <span className="text-blue-600">vs</span>
+                        <span>{teams.find(t => t.id === parseInt(matchFormData.team2Id))?.name || 'Team 2'}</span>
+                        <span className="ml-3 px-2 py-1 bg-blue-100 text-blue-800 text-sm font-medium rounded">
+                          Level {matchFormData.level}
+                        </span>
+                      </div>
+                    </>
                   )}
                 </div>
                 <button

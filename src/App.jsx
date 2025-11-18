@@ -14,6 +14,7 @@ import MatchEntry from './components/MatchEntry';
 import MatchHistory from './components/MatchHistory';
 import MediaGallery from './components/MediaGallery';
 import ActivityLog from './components/ActivityLog';
+import MigrationButton from './components/MigrationButton';
 import TournamentRules from './components/TournamentRules';
 import DataSyncManager from './components/DataSyncManager';
 import ConflictResolutionModal from './components/ConflictResolutionModal';
@@ -1239,10 +1240,26 @@ const App = () => {
           )}
 
           {activeTab === 'activity' && (
-            <ActivityLog
-              logs={activityLogs}
-              onRefresh={(newLogs) => setActivityLogs(newLogs)}
-            />
+            <div className="space-y-6">
+              {/* Migration Utility - Directors Only */}
+              {userRole === 'director' && (
+                <MigrationButton
+                  challenges={challenges}
+                  matches={matches}
+                  onUpdate={(data) => {
+                    setChallenges(data.challenges);
+                    setMatches(data.matches);
+                  }}
+                  userRole={userRole}
+                />
+              )}
+
+              {/* Activity Log */}
+              <ActivityLog
+                logs={activityLogs}
+                onRefresh={(newLogs) => setActivityLogs(newLogs)}
+              />
+            </div>
           )}
         </div>
 

@@ -2,10 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
 import { formatDate } from '../utils/formatters';
 import TeamLogo from './TeamLogo';
+import { getSeasonalTheme, getCarouselColors } from '../utils/seasonalTheme';
 
 const MatchPhotos = ({ photos, teams, isAuthenticated, onDeletePhoto }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
+
+  // Get current seasonal theme for carousel styling
+  const theme = getSeasonalTheme();
+  const carouselColors = getCarouselColors(theme.name);
 
   // Set random starting index when photos are loaded
   useEffect(() => {
@@ -133,14 +138,14 @@ const MatchPhotos = ({ photos, teams, isAuthenticated, onDeletePhoto }) => {
         </div>
 
         {/* Caption */}
-        <div className="p-4 bg-gradient-to-r from-blue-600 to-blue-800 text-white">
+        <div className={`p-4 ${carouselColors.captionGradient} ${carouselColors.captionText}`}>
           <div className="flex justify-between items-start">
             <div>
               {/* Check for custom caption first (highest priority) */}
               {currentPhoto.caption ? (
                 <>
                   <p className="font-semibold text-lg">{currentPhoto.caption}</p>
-                  <p className="text-sm text-blue-100 mt-1">
+                  <p className={`text-sm ${carouselColors.subtitleText} mt-1`}>
                     {formatDate(currentPhoto.uploadTimestamp || currentPhoto.matchDate)}
                   </p>
                 </>
@@ -154,7 +159,7 @@ const MatchPhotos = ({ photos, teams, isAuthenticated, onDeletePhoto }) => {
                           size="sm"
                           showBorder={!!getTeam(currentPhoto.team1Id)?.logo}
                         />
-                        <span className="font-bold text-green-300">
+                        <span className={`font-bold ${carouselColors.accentText}`}>
                           {currentPhoto.team1Name || getTeamName(currentPhoto.team1Id)}
                         </span>
                         <span className="font-semibold"> def. </span>
@@ -174,7 +179,7 @@ const MatchPhotos = ({ photos, teams, isAuthenticated, onDeletePhoto }) => {
                           size="sm"
                           showBorder={!!getTeam(currentPhoto.team2Id)?.logo}
                         />
-                        <span className="font-bold text-green-300">
+                        <span className={`font-bold ${carouselColors.accentText}`}>
                           {currentPhoto.team2Name || getTeamName(currentPhoto.team2Id)}
                         </span>
                         <span className="font-semibold"> def. </span>
@@ -189,10 +194,10 @@ const MatchPhotos = ({ photos, teams, isAuthenticated, onDeletePhoto }) => {
                       </>
                     )}
                     {formatMatchScore(currentPhoto) && (
-                      <span className="font-semibold text-blue-100"> {formatMatchScore(currentPhoto)}</span>
+                      <span className={`font-semibold ${carouselColors.subtitleText}`}> {formatMatchScore(currentPhoto)}</span>
                     )}
                   </div>
-                  <p className="text-sm text-blue-100 mt-1">
+                  <p className={`text-sm ${carouselColors.subtitleText} mt-1`}>
                     {formatDate(currentPhoto.matchDate)}
                   </p>
                 </>
@@ -213,21 +218,21 @@ const MatchPhotos = ({ photos, teams, isAuthenticated, onDeletePhoto }) => {
                     />
                     <span>{currentPhoto.team2Name || getTeamName(currentPhoto.team2Id)}</span>
                   </div>
-                  <p className="text-sm text-blue-100 mt-1">
+                  <p className={`text-sm ${carouselColors.subtitleText} mt-1`}>
                     {formatDate(currentPhoto.matchDate)}
                   </p>
                 </>
               ) : (
                 <>
                   <p className="font-semibold text-lg">Match Photo</p>
-                  <p className="text-sm text-blue-100 mt-1">
+                  <p className={`text-sm ${carouselColors.subtitleText} mt-1`}>
                     {formatDate(currentPhoto.uploadTimestamp || currentPhoto.matchDate)}
                   </p>
                 </>
               )}
             </div>
             {photos.length > 1 && (
-              <p className="text-sm text-blue-200">
+              <p className={`text-sm ${carouselColors.counterText}`}>
                 {currentIndex + 1} / {photos.length}
               </p>
             )}

@@ -50,7 +50,9 @@ exports.handler = async (event, context) => {
       smsType, // 'confirmation', 'verification', 'edit', 'challenge_created', 'challenge_accepted', 'pending_match_created'
       editorName, // Name of person who edited (only for 'edit' type)
       proposedDate, // For challenges and pending matches
-      courtLocation // Optional court location
+      courtLocation, // Optional court location
+      matchId, // Match ID (optional, for better tracking)
+      challengeId // Challenge ID (optional, for challenges and pending matches)
     } = data;
 
     if (!recipientPhone || !smsType) {
@@ -95,27 +97,33 @@ exports.handler = async (event, context) => {
 
     if (smsType === 'confirmation') {
       // SMS to the captain who entered the match
-      messageBody = `Match result submitted vs ${recipientTeam}. Opponent notified. -Conquest Creek`;
+      const idInfo = matchId ? ` (${matchId})` : '';
+      messageBody = `Match result submitted vs ${recipientTeam}${idInfo}. Opponent notified. -Conquest Creek`;
     } else if (smsType === 'verification') {
       // SMS to the opposing captain (verification)
-      messageBody = `${senderTeam} entered match vs your team (${matchScores}). Please verify in app. -Conquest Creek`;
+      const idInfo = matchId ? ` (${matchId})` : '';
+      messageBody = `${senderTeam} entered match vs your team${idInfo} (${matchScores}). Please verify in app. -Conquest Creek`;
     } else if (smsType === 'edit') {
       // SMS to both captains when a match is edited
-      messageBody = `Match updated by ${editorName}: ${senderTeam} vs ${recipientTeam}. Check app for details. -Conquest Creek`;
+      const idInfo = matchId ? ` (${matchId})` : '';
+      messageBody = `Match updated by ${editorName}: ${senderTeam} vs ${recipientTeam}${idInfo}. Check app for details. -Conquest Creek`;
     } else if (smsType === 'challenge_created') {
       // SMS to the challenged team captain
+      const idInfo = challengeId ? ` (${challengeId})` : '';
       const dateInfo = proposedDate ? ` for ${new Date(proposedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : '';
       const levelInfo = matchLevel ? ` (${matchLevel})` : '';
-      messageBody = `Challenge from ${senderTeam}${dateInfo}${levelInfo}. Accept in app. -Conquest Creek`;
+      messageBody = `Challenge from ${senderTeam}${dateInfo}${levelInfo}${idInfo}. Accept in app. -Conquest Creek`;
     } else if (smsType === 'challenge_accepted') {
       // SMS to the challenging team captain
+      const idInfo = challengeId ? ` (${challengeId})` : '';
       const dateInfo = matchDate ? ` on ${new Date(matchDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : '';
-      messageBody = `${recipientTeam} accepted your challenge${dateInfo}! Check app for details. -Conquest Creek`;
+      messageBody = `${recipientTeam} accepted your challenge${dateInfo}${idInfo}! Check app for details. -Conquest Creek`;
     } else if (smsType === 'pending_match_created') {
       // SMS to opponent captain when a pending match is created directly
+      const idInfo = challengeId ? ` (${challengeId})` : '';
       const dateInfo = proposedDate ? ` for ${new Date(proposedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : '';
       const levelInfo = matchLevel ? ` (${matchLevel})` : '';
-      messageBody = `${senderTeam} scheduled match with your team${dateInfo}${levelInfo}. Check app for details. -Conquest Creek`;
+      messageBody = `${senderTeam} scheduled match with your team${dateInfo}${levelInfo}${idInfo}. Check app for details. -Conquest Creek`;
     }
 
     // Twilio API request body

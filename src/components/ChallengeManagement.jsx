@@ -5,6 +5,7 @@ import { formatDate } from '../utils/formatters';
 import { tournamentStorage } from '../services/storage';
 import { isSmsEnabled } from '../firebase';
 import TeamLogo from './TeamLogo';
+import { generateChallengeId } from '../utils/idGenerator';
 
 export default function ChallengeManagement({
   teams,
@@ -32,6 +33,7 @@ export default function ChallengeManagement({
   const [selectedTeams, setSelectedTeams] = useState([]);
   const [selectedPlayers, setSelectedPlayers] = useState([]);
   const [statusFilter, setStatusFilter] = useState('open'); // 'all', 'open', 'accepted' - defaults to 'open'
+  const [sortOrder, setSortOrder] = useState('newest'); // 'newest' or 'oldest'
 
   // Challenge creation form
   const [createFormData, setCreateFormData] = useState({
@@ -164,6 +166,13 @@ export default function ChallengeManagement({
       });
     }
 
+    // Sort challenges by date
+    filteredList.sort((a, b) => {
+      const dateA = new Date(a.createdAt || 0);
+      const dateB = new Date(b.createdAt || 0);
+      return sortOrder === 'newest' ? dateB - dateA : dateA - dateB;
+    });
+
     return filteredList;
   };
 
@@ -266,8 +275,12 @@ export default function ChallengeManagement({
       return;
     }
 
+    const generatedChallengeId = generateChallengeId(challenges);
+    console.log('🆔 Generated Challenge ID:', generatedChallengeId);
+
     const newChallenge = {
       id: Date.now(),
+      challengeId: generatedChallengeId,
       challengerTeamId: challengerTeamId,
       status: 'open',
       proposedDate: createFormData.proposedDate || null,
@@ -596,18 +609,32 @@ export default function ChallengeManagement({
 
       {/* Filter Section */}
       <div className="bg-white rounded-lg shadow p-4">
-        {/* Status Filter Dropdown */}
-        <div className="mb-4">
-          <label className="block text-sm font-medium mb-2">Filter by Status:</label>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="all">All Challenges</option>
-            <option value="open">Open Only</option>
-            <option value="accepted">Accepted Only</option>
-          </select>
+        {/* Status Filter and Sort Order */}
+        <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium mb-2">Filter by Status:</label>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="all">All Challenges</option>
+              <option value="open">Open Only</option>
+              <option value="accepted">Accepted Only</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-2">Sort Order:</label>
+            <select
+              value={sortOrder}
+              onChange={(e) => setSortOrder(e.target.value)}
+              className="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="newest">Newest First</option>
+              <option value="oldest">Oldest First</option>
+            </select>
+          </div>
         </div>
 
         {/* Team/Player Filters Section */}
@@ -965,6 +992,20 @@ export default function ChallengeManagement({
               }`}>
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
+                    {/* Challenge ID and Creation Date */}
+                    <div className="flex items-center gap-3 mb-2 text-xs text-gray-600">
+                      {challenge.challengeId && (
+                        <div className="font-mono bg-gray-100 px-2 py-1 rounded">
+                          <span className="font-semibold">Challenge ID:</span> {challenge.challengeId}
+                        </div>
+                      )}
+                      {challenge.createdAt && (
+                        <div className="flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          <span>Created: {formatDate(challenge.createdAt)}</span>
+                        </div>
+                      )}
+                    </div>
                     <div className="flex items-center gap-3 mb-2">
                       {challenge.status === 'accepted' && challenge.challengedTeamId ? (
                         <>
@@ -1114,9 +1155,19 @@ export default function ChallengeManagement({
           <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="px-6 py-4 border-b border-gray-200">
               <h3 className="text-xl font-bold text-gray-900">Edit Challenge</h3>
+              {editingChallenge.challengeId && (
+                <p className="text-xs text-gray-600 mt-1 font-mono">
+                  Challenge ID: {editingChallenge.challengeId}
+                </p>
+              )}
               <p className="text-sm text-gray-600 mt-1">
                 Challenging Team: {getTeamName(editingChallenge.challengerTeamId)}
               </p>
+              {editingChallenge.createdAt && (
+                <p className="text-xs text-gray-500 mt-1">
+                  Created: {formatDate(editingChallenge.createdAt)} by {editingChallenge.createdBy || 'Unknown'}
+                </p>
+              )}
             </div>
 
             <div className="px-6 py-4 space-y-4">
@@ -1264,9 +1315,19 @@ export default function ChallengeManagement({
           <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="px-6 py-4 border-b border-gray-200">
               <h3 className="text-xl font-bold text-gray-900">Accept Challenge</h3>
+              {selectedChallenge.challengeId && (
+                <p className="text-xs text-gray-600 mt-1 font-mono">
+                  Challenge ID: {selectedChallenge.challengeId}
+                </p>
+              )}
               <p className="text-sm text-gray-600 mt-1">
                 From: {getTeamName(selectedChallenge.challengerTeamId)} (Level {selectedChallenge.proposedLevel})
               </p>
+              {selectedChallenge.createdAt && (
+                <p className="text-xs text-gray-500 mt-1">
+                  Created: {formatDate(selectedChallenge.createdAt)} by {selectedChallenge.createdBy || 'Unknown'}
+                </p>
+              )}
             </div>
 
             <div className="px-6 py-4 space-y-4">

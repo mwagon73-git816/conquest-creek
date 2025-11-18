@@ -5,7 +5,9 @@
       "Bash(cat:*)",
       "Bash(node query-matches.js:*)",
       "Bash(git add:*)",
-      "Bash(npm run dev:*)"
+      "Bash(npm run dev:*)",
+      "Bash(npm run build:web:*)",
+      "Bash(npm run:*)"
     ],
     "deny": [],
     "ask": []

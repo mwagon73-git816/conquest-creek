@@ -9,6 +9,7 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
   const [selectedTeams, setSelectedTeams] = useState([]);
   const [selectedPlayers, setSelectedPlayers] = useState([]);
   const [matchStatusFilter, setMatchStatusFilter] = useState('all'); // 'all', 'pending', 'completed'
+  const [sortOrder, setSortOrder] = useState('newest'); // 'newest' or 'oldest'
 
   // Edit pending match states
   const [showEditPendingModal, setShowEditPendingModal] = useState(false);
@@ -346,21 +347,25 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
     alert('✅ Pending match updated successfully!\n\n⚠️ IMPORTANT: Click the "Save Data" button to save this to the database.');
   };
 
-  // Sort matches by date (newest first), then by timestamp if available
+  // Sort matches by date (configurable), then by timestamp if available
   const sortedMatches = [...matches].sort((a, b) => {
     const dateA = new Date(a.date);
     const dateB = new Date(b.date);
-    
+
     // If dates are different, sort by date
     if (dateA.getTime() !== dateB.getTime()) {
-      return dateB.getTime() - dateA.getTime(); // Newest first
+      return sortOrder === 'newest'
+        ? dateB.getTime() - dateA.getTime() // Newest first
+        : dateA.getTime() - dateB.getTime(); // Oldest first
     }
-    
+
     // If dates are the same, sort by timestamp if available
     if (a.timestamp && b.timestamp) {
-      return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+      return sortOrder === 'newest'
+        ? new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        : new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
     }
-    
+
     return 0;
   });
 
@@ -466,18 +471,32 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
         Matches
       </h2>
 
-      {/* Status Filter Dropdown */}
-      <div className="mb-4">
-        <label className="block text-sm font-medium mb-2">Filter by Status:</label>
-        <select
-          value={matchStatusFilter}
-          onChange={(e) => setMatchStatusFilter(e.target.value)}
-          className="border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="all">All Matches</option>
-          <option value="pending">Pending Only</option>
-          <option value="completed">Completed Only</option>
-        </select>
+      {/* Status Filter and Sort Order */}
+      <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium mb-2">Filter by Status:</label>
+          <select
+            value={matchStatusFilter}
+            onChange={(e) => setMatchStatusFilter(e.target.value)}
+            className="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="all">All Matches</option>
+            <option value="pending">Pending Only</option>
+            <option value="completed">Completed Only</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-2">Sort Order:</label>
+          <select
+            value={sortOrder}
+            onChange={(e) => setSortOrder(e.target.value)}
+            className="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="newest">Newest First</option>
+            <option value="oldest">Oldest First</option>
+          </select>
+        </div>
       </div>
 
       {/* Team/Player Filters Section */}
@@ -653,6 +672,26 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
+                        {/* Challenge ID and Metadata */}
+                        <div className="flex items-center gap-3 mb-2 text-xs text-gray-600 flex-wrap">
+                          {challenge.challengeId && (
+                            <div className="font-mono bg-orange-100 px-2 py-1 rounded">
+                              <span className="font-semibold">Challenge ID:</span> {challenge.challengeId}
+                            </div>
+                          )}
+                          {challenge.createdAt && (
+                            <div className="flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              <span>Created: {formatDate(challenge.createdAt)}</span>
+                            </div>
+                          )}
+                          {challenge.acceptedAt && (
+                            <div className="flex items-center gap-1">
+                              <Check className="w-3 h-3" />
+                              <span>Accepted: {formatDate(challenge.acceptedAt)}</span>
+                            </div>
+                          )}
+                        </div>
                         {/* Match Title */}
                         <div className="flex items-center gap-3 mb-2">
                           <TeamLogo team={team1} size="sm" showBorder={!!team1?.logo} />
@@ -791,11 +830,30 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
               {filteredMatches.slice(0, 20).map(match => {
             const team1 = teams.find(t => t.id == match.team1Id);
             const team2 = teams.find(t => t.id == match.team2Id);
-            
+
             return (
               <div key={match.id} className="border rounded p-3 hover:bg-gray-50">
                 <div className="flex justify-between items-start">
                   <div className="flex-1">
+                    {/* Match ID and Metadata */}
+                    <div className="flex items-center gap-3 mb-1 text-xs text-gray-600 flex-wrap">
+                      {match.matchId && (
+                        <div className="font-mono bg-gray-100 px-2 py-1 rounded">
+                          <span className="font-semibold">Match ID:</span> {match.matchId}
+                        </div>
+                      )}
+                      {match.originChallengeId && (
+                        <div className="text-blue-600 bg-blue-50 px-2 py-1 rounded">
+                          From Challenge: {match.originChallengeId}
+                        </div>
+                      )}
+                      {match.timestamp && (
+                        <div className="flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          <span>Entered: {formatDate(match.timestamp)}</span>
+                        </div>
+                      )}
+                    </div>
                     <div className="flex items-center gap-2 mb-1">
                       {match.winner === 'team1' ? (
                         <>
@@ -893,9 +951,28 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
           <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
             <div className="px-6 py-4 border-b border-gray-200">
               <h3 className="text-xl font-bold text-gray-900">Edit Pending Match</h3>
+              {editingPendingMatch.challengeId && (
+                <p className="text-xs text-gray-600 mt-1 font-mono">
+                  Challenge ID: {editingPendingMatch.challengeId}
+                </p>
+              )}
               <p className="text-sm text-gray-600 mt-1">
                 {getTeamName(editingPendingMatch.challengerTeamId)} vs {getTeamName(editingPendingMatch.challengedTeamId)}
               </p>
+              <div className="flex items-center gap-3 text-xs text-gray-500 mt-1">
+                {editingPendingMatch.createdAt && (
+                  <div className="flex items-center gap-1">
+                    <Clock className="w-3 h-3" />
+                    <span>Created: {formatDate(editingPendingMatch.createdAt)}</span>
+                  </div>
+                )}
+                {editingPendingMatch.acceptedAt && (
+                  <div className="flex items-center gap-1">
+                    <Check className="w-3 h-3" />
+                    <span>Accepted: {formatDate(editingPendingMatch.acceptedAt)}</span>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="px-6 py-4 space-y-4">

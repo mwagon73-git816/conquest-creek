@@ -27,7 +27,9 @@ exports.handler = async (event, context) => {
       matchDate,
       matchLevel,
       emailType, // 'confirmation', 'verification', 'edit', or 'pending_match_created'
-      editorName // Name of person who edited (only for 'edit' type)
+      editorName, // Name of person who edited (only for 'edit' type)
+      matchId, // Match ID (optional, for better tracking)
+      challengeId // Challenge ID (optional, for pending matches)
     } = data;
 
     // Validate required fields (matchScores not required for pending_match_created)
@@ -85,11 +87,13 @@ exports.handler = async (event, context) => {
     if (emailType === 'confirmation') {
       // Email to the captain who entered the match
       subject = `Match Result Submitted - ${senderTeam} vs ${recipientTeam}`;
+      const matchIdLine = matchId ? `Match ID: ${matchId}\n` : '';
+      const challengeIdLine = challengeId ? `Challenge ID: ${challengeId}\n` : '';
       textBody = `Hi ${recipientName || 'Captain'},
 
 Thank you for submitting the match result:
 
-${senderTeam} vs ${recipientTeam}
+${matchIdLine}${challengeIdLine}${senderTeam} vs ${recipientTeam}
 Score: ${matchScores}
 Level: ${matchLevel || 'Not specified'}
 Date: ${formattedDate}
@@ -101,12 +105,14 @@ Conquest of the Creek Tournament System`;
     } else if (emailType === 'verification') {
       // Email to the opposing captain (verification)
       subject = `Match Result Verification - ${senderTeam} vs ${recipientTeam}`;
+      const matchIdLine = matchId ? `- Match ID: ${matchId}\n` : '';
+      const challengeIdLine = challengeId ? `- Challenge ID: ${challengeId}\n` : '';
       textBody = `Hi ${recipientName || 'Captain'},
 
 ${senderTeam}'s captain has entered a match result that involves your team:
 
 Match Details:
-- Teams: ${senderTeam} vs ${recipientTeam}
+${matchIdLine}${challengeIdLine}- Teams: ${senderTeam} vs ${recipientTeam}
 - Score: ${matchScores}
 - Level: ${matchLevel || 'Not specified'}
 - Date: ${formattedDate}
@@ -120,12 +126,14 @@ Conquest of the Creek Tournament System`;
     } else if (emailType === 'edit') {
       // Email to both captains when a match is edited
       subject = `Match Result Updated - ${senderTeam} vs ${recipientTeam}`;
+      const matchIdLine = matchId ? `- Match ID: ${matchId}\n` : '';
+      const challengeIdLine = challengeId ? `- Challenge ID: ${challengeId}\n` : '';
       textBody = `Hi ${recipientName || 'Captain'},
 
 A match result has been updated by ${editorName || 'a team captain'}:
 
 Updated Match Details:
-- Teams: ${senderTeam} vs ${recipientTeam}
+${matchIdLine}${challengeIdLine}- Teams: ${senderTeam} vs ${recipientTeam}
 - Score: ${matchScores}
 - Level: ${matchLevel || 'Not specified'}
 - Date: ${formattedDate}
@@ -141,12 +149,13 @@ Conquest of the Creek Tournament System`;
     } else if (emailType === 'pending_match_created') {
       // Email to opponent captain when a pending match is scheduled directly
       subject = `Match Scheduled - ${senderTeam} vs ${recipientTeam}`;
+      const challengeIdLine = challengeId ? `- Challenge ID: ${challengeId}\n` : '';
       textBody = `Hi ${recipientName || 'Captain'},
 
 ${senderTeam} has scheduled a match with your team:
 
 Match Details:
-- Teams: ${senderTeam} vs ${recipientTeam}
+${challengeIdLine}- Teams: ${senderTeam} vs ${recipientTeam}
 - Level: ${matchLevel || 'Not specified'}
 - Scheduled Date: ${formattedDate}
 
