@@ -14,7 +14,7 @@ export const generateChallengeId = (existingChallenges = []) => {
 
   // Find the highest number for this year
   const existingIds = existingChallenges
-    .filter(c => c.challengeId && c.challengeId.startsWith(prefix))
+    .filter(c => c.challengeId && typeof c.challengeId === 'string' && c.challengeId.startsWith(prefix))
     .map(c => {
       const match = c.challengeId.match(/CHALL-\d{4}-(\d+)/);
       return match ? parseInt(match[1], 10) : 0;
@@ -40,7 +40,7 @@ export const generateMatchId = (existingMatches = []) => {
 
   // Find the highest number for this year
   const existingIds = existingMatches
-    .filter(m => m.matchId && m.matchId.startsWith(prefix))
+    .filter(m => m.matchId && typeof m.matchId === 'string' && m.matchId.startsWith(prefix))
     .map(m => {
       const match = m.matchId.match(/MATCH-\d{4}-(\d+)/);
       return match ? parseInt(match[1], 10) : 0;

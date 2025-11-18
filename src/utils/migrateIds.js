@@ -40,6 +40,15 @@ export const migrateChallengeIds = (challenges, matches = []) => {
   const needsChallengeId = sortedByDate.filter(c => !c.challengeId);
   const needsMatchId = sortedByDate.filter(c => c.status === 'accepted' && !c.matchId);
 
+  // Log any accepted challenges with invalid matchId types
+  const invalidMatchIds = sortedByDate.filter(c => c.status === 'accepted' && c.matchId && typeof c.matchId !== 'string');
+  if (invalidMatchIds.length > 0) {
+    console.warn('⚠️ Found accepted challenges with non-string matchId values:');
+    invalidMatchIds.forEach(c => {
+      console.warn(`  - Challenge ID ${c.id}: matchId type is ${typeof c.matchId}, value:`, c.matchId);
+    });
+  }
+
   console.log('🔄 Challenge ID Migration:', {
     totalChallenges: challenges.length,
     needsChallengeId: needsChallengeId.length,
@@ -90,8 +99,8 @@ export const migrateChallengeIds = (challenges, matches = []) => {
 
       // Find existing Match IDs for this year (from both matches and accepted challenges)
       const existingMatchIdsForYear = [
-        ...matches.filter(m => m.matchId && m.matchId.startsWith(`MATCH-${year}-`)),
-        ...sortedByDate.filter(c => c.matchId && c.matchId.startsWith(`MATCH-${year}-`))
+        ...matches.filter(m => m.matchId && typeof m.matchId === 'string' && m.matchId.startsWith(`MATCH-${year}-`)),
+        ...sortedByDate.filter(c => c.matchId && typeof c.matchId === 'string' && c.matchId.startsWith(`MATCH-${year}-`))
       ].map(item => {
         const match = item.matchId.match(/MATCH-\d{4}-(\d+)/);
         return match ? parseInt(match[1], 10) : 0;
@@ -101,7 +110,7 @@ export const migrateChallengeIds = (challenges, matches = []) => {
       const maxNumber = existingMatchIdsForYear.length > 0 ? Math.max(...existingMatchIdsForYear) : 0;
       const legacyIndex = sortedByDate
         .slice(0, index + 1)
-        .filter(c => c.status === 'accepted' && (!c.matchId || c.matchId.startsWith(`MATCH-${year}-`)))
+        .filter(c => c.status === 'accepted' && (!c.matchId || (typeof c.matchId === 'string' && c.matchId.startsWith(`MATCH-${year}-`))))
         .length;
 
       const nextNumber = maxNumber + legacyIndex;
@@ -131,6 +140,15 @@ export const migrateChallengeIds = (challenges, matches = []) => {
 export const migrateMatchIds = (matches, challenges = []) => {
   if (!matches || !Array.isArray(matches)) {
     return { matches: [], migratedCount: 0 };
+  }
+
+  // Log any matches with invalid matchId types
+  const invalidMatchIds = matches.filter(m => m.matchId && typeof m.matchId !== 'string');
+  if (invalidMatchIds.length > 0) {
+    console.warn('⚠️ Found matches with non-string matchId values:');
+    invalidMatchIds.forEach(m => {
+      console.warn(`  - Match ID ${m.id}: matchId type is ${typeof m.matchId}, value:`, m.matchId);
+    });
   }
 
   let migratedCount = 0;
@@ -168,7 +186,7 @@ export const migrateMatchIds = (matches, challenges = []) => {
 
     // Find existing IDs for this year to ensure uniqueness
     const existingIdsForYear = sortedByDate
-      .filter(m => m.matchId && m.matchId.startsWith(`MATCH-${year}-`))
+      .filter(m => m.matchId && typeof m.matchId === 'string' && m.matchId.startsWith(`MATCH-${year}-`))
       .map(m => {
         const matchPattern = m.matchId.match(/MATCH-\d{4}-(\d+)/);
         return matchPattern ? parseInt(matchPattern[1], 10) : 0;
@@ -178,7 +196,7 @@ export const migrateMatchIds = (matches, challenges = []) => {
     const maxNumber = existingIdsForYear.length > 0 ? Math.max(...existingIdsForYear) : 0;
     const legacyIndex = sortedByDate
       .slice(0, index + 1)
-      .filter(m => !m.matchId || m.matchId.startsWith(`MATCH-${year}-`))
+      .filter(m => !m.matchId || (typeof m.matchId === 'string' && m.matchId.startsWith(`MATCH-${year}-`)))
       .length;
 
     const nextNumber = maxNumber + legacyIndex;
