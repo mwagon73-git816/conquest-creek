@@ -5,7 +5,7 @@ import { formatDate } from '../utils/formatters';
 import { tournamentStorage } from '../services/storage';
 import { isSmsEnabled } from '../firebase';
 import TeamLogo from './TeamLogo';
-import { generateChallengeId } from '../utils/idGenerator';
+import { generateChallengeId, generateMatchId } from '../utils/idGenerator';
 
 export default function ChallengeManagement({
   teams,
@@ -369,12 +369,17 @@ export default function ChallengeManagement({
     // Determine the challenged team
     const challengedTeamId = userRole === 'captain' ? userTeamId : selectedChallenge.challengedTeamId;
 
-    // Update challenge status to accepted
+    // Generate Match ID for the accepted challenge (pending match)
+    const generatedMatchId = generateMatchId(matches || []);
+    console.log('🆔 Generated Match ID for accepted challenge:', generatedMatchId);
+
+    // Update challenge status to accepted and assign Match ID
     const updatedChallenges = challenges.map(c => {
       if (c.id === selectedChallenge.id) {
         return {
           ...c,
           status: 'accepted',
+          matchId: generatedMatchId, // Assign Match ID when accepting
           challengedTeamId: challengedTeamId,
           acceptedDate: acceptFormData.acceptedDate,
           acceptedLevel: acceptFormData.acceptedLevel,

@@ -449,13 +449,18 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
     try {
       console.log('📋 Creating pending match...');
 
-      // Create the pending match (as an accepted challenge with origin='direct')
+      // Generate Match ID for the pending match
+      const generatedMatchId = generateMatchId(matches || []);
+      console.log('🆔 Generated Match ID for pending match:', generatedMatchId);
+
+      // Also generate Challenge ID for tracking purposes (maintains compatibility)
       const generatedChallengeId = generateChallengeId(challenges || []);
-      console.log('🆔 Generated Challenge ID for pending match:', generatedChallengeId);
+      console.log('🆔 Generated Challenge ID for tracking:', generatedChallengeId);
 
       const newPendingMatch = {
         id: Date.now(),
-        challengeId: generatedChallengeId,
+        matchId: generatedMatchId, // Primary identifier - Match ID
+        challengeId: generatedChallengeId, // Secondary identifier for tracking
         challengerTeamId: userTeamId, // Captain's team
         challengedTeamId: parseInt(pendingMatchFormData.opponentTeamId),
         status: 'accepted', // Goes directly to pending status
@@ -752,7 +757,8 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
       timestamp: new Date().toISOString(),
       fromChallenge: isPendingMatch, // Flag to indicate this came from a challenge
       matchId: matchIdReadable, // Readable Match ID
-      originChallengeId: isPendingMatch && editingMatch ? editingMatch.challengeId : null // Track original challenge ID
+      originChallengeId: isPendingMatch && editingMatch ? editingMatch.challengeId : null, // Track original challenge ID
+      scheduledDate: isPendingMatch && editingMatch ? editingMatch.acceptedDate : null // Preserve the originally scheduled date from challenge
     };
 
     // Debug: Log match save information
@@ -1658,9 +1664,14 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
                   {editingMatch && editingMatch.isPendingMatch && (
                     <>
                       <div className="mt-1 flex items-center gap-3 text-xs text-gray-600 flex-wrap">
-                        {editingMatch.challengeId && (
+                        {editingMatch.matchId && (
+                          <div className="font-mono bg-blue-100 px-2 py-1 rounded">
+                            <span className="font-semibold">Match ID:</span> {editingMatch.matchId}
+                          </div>
+                        )}
+                        {editingMatch.challengeId && editingMatch.origin !== 'direct' && (
                           <div className="font-mono bg-orange-100 px-2 py-1 rounded">
-                            <span className="font-semibold">Challenge ID:</span> {editingMatch.challengeId}
+                            <span className="font-semibold">Origin Challenge ID:</span> {editingMatch.challengeId}
                           </div>
                         )}
                         {editingMatch.createdAt && (

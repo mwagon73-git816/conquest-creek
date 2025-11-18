@@ -122,9 +122,14 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
     const pending = challenges
       .filter(c => c.status === 'accepted')
       .sort((a, b) => {
-        const dateA = new Date(a.acceptedAt || a.createdAt);
-        const dateB = new Date(b.acceptedAt || b.createdAt);
-        return dateB - dateA; // Newest first
+        // Sort by scheduled date (acceptedDate), respecting sortOrder toggle
+        const dateA = new Date(a.acceptedDate || a.acceptedAt || a.createdAt);
+        const dateB = new Date(b.acceptedDate || b.acceptedAt || b.createdAt);
+
+        // Respect the sortOrder state
+        return sortOrder === 'newest'
+          ? dateB - dateA  // Newest first
+          : dateA - dateB; // Oldest first
       });
 
     console.log('Accepted challenges found:', pending.length);
@@ -347,10 +352,11 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
     alert('✅ Pending match updated successfully!\n\n⚠️ IMPORTANT: Click the "Save Data" button to save this to the database.');
   };
 
-  // Sort matches by date (configurable), then by timestamp if available
+  // Sort matches by scheduled date (if available), then completion date, then by timestamp
   const sortedMatches = [...matches].sort((a, b) => {
-    const dateA = new Date(a.date);
-    const dateB = new Date(b.date);
+    // Prioritize scheduled date (from challenges), fallback to completion date
+    const dateA = new Date(a.scheduledDate || a.date);
+    const dateB = new Date(b.scheduledDate || b.date);
 
     // If dates are different, sort by date
     if (dateA.getTime() !== dateB.getTime()) {
@@ -672,11 +678,16 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
-                        {/* Challenge ID and Metadata */}
+                        {/* Match ID and Metadata */}
                         <div className="flex items-center gap-3 mb-2 text-xs text-gray-600 flex-wrap">
-                          {challenge.challengeId && (
+                          {challenge.matchId && (
+                            <div className="font-mono bg-blue-100 px-2 py-1 rounded">
+                              <span className="font-semibold">Match ID:</span> {challenge.matchId}
+                            </div>
+                          )}
+                          {challenge.challengeId && challenge.origin !== 'direct' && (
                             <div className="font-mono bg-orange-100 px-2 py-1 rounded">
-                              <span className="font-semibold">Challenge ID:</span> {challenge.challengeId}
+                              <span className="font-semibold">Origin Challenge ID:</span> {challenge.challengeId}
                             </div>
                           )}
                           {challenge.createdAt && (
@@ -951,11 +962,18 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
           <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
             <div className="px-6 py-4 border-b border-gray-200">
               <h3 className="text-xl font-bold text-gray-900">Edit Pending Match</h3>
-              {editingPendingMatch.challengeId && (
-                <p className="text-xs text-gray-600 mt-1 font-mono">
-                  Challenge ID: {editingPendingMatch.challengeId}
-                </p>
-              )}
+              <div className="flex items-center gap-3 text-xs text-gray-600 mt-1 flex-wrap">
+                {editingPendingMatch.matchId && (
+                  <div className="font-mono bg-blue-100 px-2 py-1 rounded">
+                    <span className="font-semibold">Match ID:</span> {editingPendingMatch.matchId}
+                  </div>
+                )}
+                {editingPendingMatch.challengeId && editingPendingMatch.origin !== 'direct' && (
+                  <div className="font-mono bg-orange-100 px-2 py-1 rounded">
+                    <span className="font-semibold">Origin Challenge ID:</span> {editingPendingMatch.challengeId}
+                  </div>
+                )}
+              </div>
               <p className="text-sm text-gray-600 mt-1">
                 {getTeamName(editingPendingMatch.challengerTeamId)} vs {getTeamName(editingPendingMatch.challengedTeamId)}
               </p>

@@ -61,7 +61,7 @@ export default function MigrationButton({ challenges, matches, onUpdate, userRol
 
       setMigrationStatus({
         success: true,
-        message: `Migration completed successfully!\n\nChallenges migrated: ${result.challengesMigrated}\nMatches migrated: ${result.matchesMigrated}\n\n⚠️ IMPORTANT: Click "Save Data" to persist these changes to the database!`
+        message: `Migration completed successfully!\n\nChallenge IDs added: ${result.challengesMigrated}\nPending Match IDs added: ${result.pendingMatchesMigrated}\nCompleted Match IDs added: ${result.matchesMigrated}\nTotal IDs added: ${result.totalMigrated}\n\n⚠️ IMPORTANT: Click "Save Data" to persist these changes to the database!`
       });
 
       // Reset migration needed status
@@ -117,8 +117,15 @@ export default function MigrationButton({ challenges, matches, onUpdate, userRol
                   <>
                     <p className="font-semibold mb-2">Migration Needed:</p>
                     <ul className="list-disc list-inside space-y-1">
-                      <li>Challenges: {migrationNeeded.stats.challengesWithoutIds} of {migrationNeeded.stats.totalChallenges} need IDs</li>
-                      <li>Matches: {migrationNeeded.stats.matchesWithoutIds} of {migrationNeeded.stats.totalMatches} need IDs</li>
+                      {migrationNeeded.stats.challengesWithoutIds > 0 && (
+                        <li>Challenges: {migrationNeeded.stats.challengesWithoutIds} of {migrationNeeded.stats.totalChallenges} need Challenge IDs</li>
+                      )}
+                      {migrationNeeded.stats.pendingMatchesWithoutIds > 0 && (
+                        <li>Pending Matches: {migrationNeeded.stats.pendingMatchesWithoutIds} of {migrationNeeded.stats.totalPendingMatches} need Match IDs</li>
+                      )}
+                      {migrationNeeded.stats.matchesWithoutIds > 0 && (
+                        <li>Completed Matches: {migrationNeeded.stats.matchesWithoutIds} of {migrationNeeded.stats.totalMatches} need Match IDs</li>
+                      )}
                     </ul>
                   </>
                 ) : (
