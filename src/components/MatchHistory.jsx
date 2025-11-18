@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { TrendingUp, Edit, Trash2, ChevronDown, ChevronUp, Filter, Clock, Calendar, Check, Edit2, X } from 'lucide-react';
+import { TrendingUp, Edit, Trash2, ChevronDown, ChevronUp, Filter, Clock, Calendar, Check, Edit2, X, AlertCircle } from 'lucide-react';
 import { formatNTRP, formatDynamic, formatDate } from '../utils/formatters';
 import { ACTION_TYPES, createLogEntry } from '../services/activityLogger';
 import TeamLogo from './TeamLogo';
@@ -671,10 +671,42 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
                 const team1Players = getPlayerNames(challenge.challengerPlayers);
                 const team2Players = getPlayerNames(challenge.challengedPlayers);
 
+                // Check if match is overdue (1 day past the scheduled date)
+                const isOverdue = challenge.acceptedDate && (() => {
+                  // Parse date as LOCAL time, not UTC (avoid timezone issues)
+                  const [year, month, day] = challenge.acceptedDate.split('-').map(Number);
+                  const scheduledDate = new Date(year, month - 1, day); // Month is 0-indexed
+
+                  // Create a date for 1 day after scheduled date (local time)
+                  const oneDayAfterScheduled = new Date(year, month - 1, day + 1);
+
+                  // Get today's date at midnight (local time)
+                  const today = new Date();
+                  today.setHours(0, 0, 0, 0);
+
+                  // Debug logging
+                  if (challenge.matchId === 'MATCH-2025-004') {
+                    console.log('🔍 Overdue Check for MATCH-2025-004:', {
+                      acceptedDate: challenge.acceptedDate,
+                      scheduledDate: scheduledDate.toISOString(),
+                      oneDayAfter: oneDayAfterScheduled.toISOString(),
+                      today: today.toISOString(),
+                      comparison: `${today.getTime()} >= ${oneDayAfterScheduled.getTime()}`,
+                      isOverdue: today >= oneDayAfterScheduled
+                    });
+                  }
+
+                  return today >= oneDayAfterScheduled;
+                })();
+
                 return (
                   <div
                     key={challenge.id}
-                    className="bg-orange-50 border-2 border-orange-300 rounded-lg p-4 hover:bg-orange-100 transition-colors"
+                    className={`border-2 rounded-lg p-4 transition-colors ${
+                      isOverdue
+                        ? 'bg-red-50 border-red-400 hover:bg-red-100'
+                        : 'bg-orange-50 border-orange-300 hover:bg-orange-100'
+                    }`}
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
@@ -696,6 +728,12 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
                             <Clock className="w-3 h-3" />
                             Awaiting Results
                           </span>
+                          {isOverdue && (
+                            <span className="px-2 py-1 bg-red-600 text-white text-xs font-bold rounded flex items-center gap-1 animate-pulse">
+                              <AlertCircle className="w-3 h-3" />
+                              Results Past Due
+                            </span>
+                          )}
                         </div>
 
                         {/* Players */}
