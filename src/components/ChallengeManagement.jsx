@@ -997,20 +997,6 @@ export default function ChallengeManagement({
               }`}>
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
-                    {/* Challenge ID and Creation Date */}
-                    <div className="flex items-center gap-3 mb-2 text-xs text-gray-600">
-                      {challenge.challengeId && (
-                        <div className="font-mono bg-gray-100 px-2 py-1 rounded">
-                          <span className="font-semibold">Challenge ID:</span> {challenge.challengeId}
-                        </div>
-                      )}
-                      {challenge.createdAt && (
-                        <div className="flex items-center gap-1">
-                          <Clock className="w-3 h-3" />
-                          <span>Created: {formatDate(challenge.createdAt)}</span>
-                        </div>
-                      )}
-                    </div>
                     <div className="flex items-center gap-3 mb-2">
                       {challenge.status === 'accepted' && challenge.challengedTeamId ? (
                         <>
@@ -1099,10 +1085,18 @@ export default function ChallengeManagement({
                           <strong>Accept Notes:</strong> {challenge.acceptNotes}
                         </div>
                       )}
-                      <div className="text-xs text-gray-500 mt-2">
-                        Created by {challenge.createdBy} on {formatDate(challenge.createdAt)}
-                        {challenge.status === 'accepted' && challenge.acceptedBy && (
-                          <span className="ml-2">• Accepted by {challenge.acceptedBy} on {formatDate(challenge.acceptedAt)}</span>
+                      {/* Metadata Footer - Challenge ID and Dates */}
+                      <div className="text-xs text-gray-500 italic mt-3 pt-2 border-t border-gray-200">
+                        {challenge.challengeId && (
+                          <span className="font-mono font-semibold">Challenge ID: {challenge.challengeId}</span>
+                        )}
+                        {challenge.createdAt && (
+                          <span className={challenge.challengeId ? "ml-2" : ""}>
+                            {challenge.challengeId && "| "}Created: {formatDate(challenge.createdAt)}
+                          </span>
+                        )}
+                        {challenge.status === 'accepted' && challenge.acceptedAt && (
+                          <span className="ml-2">| Accepted: {formatDate(challenge.acceptedAt)}</span>
                         )}
                       </div>
                     </div>

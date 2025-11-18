@@ -678,31 +678,6 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
-                        {/* Match ID and Metadata */}
-                        <div className="flex items-center gap-3 mb-2 text-xs text-gray-600 flex-wrap">
-                          {challenge.matchId && (
-                            <div className="font-mono bg-blue-100 px-2 py-1 rounded">
-                              <span className="font-semibold">Match ID:</span> {challenge.matchId}
-                            </div>
-                          )}
-                          {challenge.challengeId && challenge.origin !== 'direct' && (
-                            <div className="font-mono bg-orange-100 px-2 py-1 rounded">
-                              <span className="font-semibold">Origin Challenge ID:</span> {challenge.challengeId}
-                            </div>
-                          )}
-                          {challenge.createdAt && (
-                            <div className="flex items-center gap-1">
-                              <Clock className="w-3 h-3" />
-                              <span>Created: {formatDate(challenge.createdAt)}</span>
-                            </div>
-                          )}
-                          {challenge.acceptedAt && (
-                            <div className="flex items-center gap-1">
-                              <Check className="w-3 h-3" />
-                              <span>Accepted: {formatDate(challenge.acceptedAt)}</span>
-                            </div>
-                          )}
-                        </div>
                         {/* Match Title */}
                         <div className="flex items-center gap-3 mb-2">
                           <TeamLogo team={team1} size="sm" showBorder={!!team1?.logo} />
@@ -756,17 +731,27 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
                           </div>
                         </div>
 
-                        {/* Match Details */}
-                        <div className="flex gap-4 text-sm text-gray-700">
-                          {challenge.acceptedDate && (
-                            <div className="flex items-center gap-1">
-                              <Calendar className="w-4 h-4" />
-                              <span>Scheduled: {formatDate(challenge.acceptedDate)}</span>
-                            </div>
-                          )}
-                          <div className="text-gray-500">
-                            Created: {formatDate(challenge.acceptedAt || challenge.createdAt)}
+                        {/* Scheduled Date */}
+                        {challenge.acceptedDate && (
+                          <div className="flex items-center gap-1 text-sm text-gray-700 mb-2">
+                            <Calendar className="w-4 h-4" />
+                            <span>Scheduled: {formatDate(challenge.acceptedDate)}</span>
                           </div>
+                        )}
+
+                        {/* Metadata Footer - Match ID and Dates */}
+                        <div className="text-xs text-gray-500 italic mt-3 pt-2 border-t border-gray-300">
+                          {challenge.matchId && (
+                            <span className="font-mono font-semibold">Match ID: {challenge.matchId}</span>
+                          )}
+                          {challenge.createdAt && (
+                            <span className={challenge.matchId ? "ml-2" : ""}>
+                              {challenge.matchId && "| "}Created: {formatDate(challenge.createdAt)}
+                            </span>
+                          )}
+                          {challenge.acceptedAt && (
+                            <span className="ml-2">| Accepted: {formatDate(challenge.acceptedAt)}</span>
+                          )}
                         </div>
                         {challenge.notes && (
                           <div className="text-sm text-gray-600 mt-2">
@@ -846,25 +831,6 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
               <div key={match.id} className="border rounded p-3 hover:bg-gray-50">
                 <div className="flex justify-between items-start">
                   <div className="flex-1">
-                    {/* Match ID and Metadata */}
-                    <div className="flex items-center gap-3 mb-1 text-xs text-gray-600 flex-wrap">
-                      {match.matchId && (
-                        <div className="font-mono bg-gray-100 px-2 py-1 rounded">
-                          <span className="font-semibold">Match ID:</span> {match.matchId}
-                        </div>
-                      )}
-                      {match.originChallengeId && (
-                        <div className="text-blue-600 bg-blue-50 px-2 py-1 rounded">
-                          From Challenge: {match.originChallengeId}
-                        </div>
-                      )}
-                      {match.timestamp && (
-                        <div className="flex items-center gap-1">
-                          <Clock className="w-3 h-3" />
-                          <span>Entered: {formatDate(match.timestamp)}</span>
-                        </div>
-                      )}
-                    </div>
                     <div className="flex items-center gap-2 mb-1">
                       {match.winner === 'team1' ? (
                         <>
@@ -928,6 +894,21 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
                         )}
                       </div>
                     )}
+
+                    {/* Metadata Footer - Match ID and Dates */}
+                    <div className="text-xs text-gray-500 italic mt-3 pt-2 border-t border-gray-200">
+                      {match.matchId && (
+                        <span className="font-mono font-semibold">Match ID: {match.matchId}</span>
+                      )}
+                      {match.timestamp && (
+                        <span className={match.matchId ? "ml-2" : ""}>
+                          {match.matchId && "| "}Entered: {formatDate(match.timestamp)}
+                        </span>
+                      )}
+                      {match.originChallengeId && (
+                        <span className="ml-2">| From Challenge: {match.originChallengeId}</span>
+                      )}
+                    </div>
                   </div>
                   {isAuthenticated && canEditMatch(match) && (
                     <div className="flex gap-2">
