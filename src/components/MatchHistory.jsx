@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { TrendingUp, Edit, Trash2, ChevronDown, ChevronUp, Filter, Clock, Calendar, Check, Edit2, X, AlertCircle } from 'lucide-react';
-import { formatNTRP, formatDynamic, formatDate } from '../utils/formatters';
+import { formatNTRP, formatDate } from '../utils/formatters';
 import { ACTION_TYPES, createLogEntry } from '../services/activityLogger';
 import { generateMatchId } from '../utils/idGenerator';
 import { tournamentStorage } from '../services/storage';
@@ -145,7 +145,6 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
       return player ? {
         name: `${player.firstName} ${player.lastName}`,
         rating: player.ntrpRating,
-        dynamicRating: player.dynamicRating,
         gender: player.gender
       } : null;
     }).filter(p => p !== null);
@@ -632,7 +631,7 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
                             <span className="text-sm">
                               {player.lastName}, {player.firstName}
                               <span className="text-xs text-gray-500 ml-1">
-                                ({player.gender} {player.dynamicRating ? formatDynamic(player.dynamicRating) : formatNTRP(player.ntrpRating)})
+                                ({player.gender} {formatNTRP(player.ntrpRating)})
                               </span>
                             </span>
                           </label>
@@ -754,7 +753,7 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
                             {team1Players.length > 0 ? (
                               team1Players.map((player, idx) => (
                                 <div key={idx} className="text-gray-600">
-                                  • {player.name} ({player.gender}) {player.dynamicRating ? formatDynamic(player.dynamicRating) : formatNTRP(player.rating)}
+                                  • {player.name} ({player.gender}) {formatNTRP(player.rating)}
                                 </div>
                               ))
                             ) : (
@@ -769,7 +768,7 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
                             {team2Players.length > 0 ? (
                               team2Players.map((player, idx) => (
                                 <div key={idx} className="text-gray-600">
-                                  • {player.name} ({player.gender}) {player.dynamicRating ? formatDynamic(player.dynamicRating) : formatNTRP(player.rating)}
+                                  • {player.name} ({player.gender}) {formatNTRP(player.rating)}
                                 </div>
                               ))
                             ) : (
