@@ -65,22 +65,33 @@ const MatchPhotos = ({ photos, teams, isAuthenticated, onDeletePhoto }) => {
   const formatMatchScore = (photo) => {
     const setScores = [];
 
-    // Add Set 1
+    // Determine if team1 or team2 won
+    const isTeam1Winner = photo.winner === 'team1';
+
+    // Add Set 1 - show winner's score first
     if (photo.set1Team1 !== undefined && photo.set1Team2 !== undefined &&
         photo.set1Team1 !== '' && photo.set1Team2 !== '') {
-      setScores.push(`${photo.set1Team1}-${photo.set1Team2}`);
+      const set1Score = isTeam1Winner
+        ? `${photo.set1Team1}-${photo.set1Team2}`
+        : `${photo.set1Team2}-${photo.set1Team1}`;
+      setScores.push(set1Score);
     }
 
-    // Add Set 2
+    // Add Set 2 - show winner's score first
     if (photo.set2Team1 !== undefined && photo.set2Team2 !== undefined &&
         photo.set2Team1 !== '' && photo.set2Team2 !== '') {
-      setScores.push(`${photo.set2Team1}-${photo.set2Team2}`);
+      const set2Score = isTeam1Winner
+        ? `${photo.set2Team1}-${photo.set2Team2}`
+        : `${photo.set2Team2}-${photo.set2Team1}`;
+      setScores.push(set2Score);
     }
 
-    // Add Set 3 with tiebreaker notation if applicable
+    // Add Set 3 - show winner's score first, with tiebreaker notation if applicable
     if (photo.set3Team1 !== undefined && photo.set3Team2 !== undefined &&
         photo.set3Team1 !== '' && photo.set3Team2 !== '') {
-      const set3Score = `${photo.set3Team1}-${photo.set3Team2}`;
+      const set3Score = isTeam1Winner
+        ? `${photo.set3Team1}-${photo.set3Team2}`
+        : `${photo.set3Team2}-${photo.set3Team1}`;
       const tbNotation = photo.set3IsTiebreaker ? ' TB' : '';
       setScores.push(set3Score + tbNotation);
     }

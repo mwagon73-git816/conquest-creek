@@ -2,7 +2,10 @@ import React, { useState } from 'react';
 import { TrendingUp, Edit, Trash2, ChevronDown, ChevronUp, Filter, Clock, Calendar, Check, Edit2, X, AlertCircle } from 'lucide-react';
 import { formatNTRP, formatDynamic, formatDate } from '../utils/formatters';
 import { ACTION_TYPES, createLogEntry } from '../services/activityLogger';
+import { generateMatchId } from '../utils/idGenerator';
+import { tournamentStorage } from '../services/storage';
 import TeamLogo from './TeamLogo';
+import MatchResultsModal from './MatchResultsModal';
 
 const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTab, players, userRole, userTeamId, setEditingMatch, challenges, onEnterPendingResults, onChallengesChange, addLog }) => {
   const [showFilters, setShowFilters] = useState(false);
@@ -21,21 +24,9 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
     team2Players: []
   });
 
-  // Debug: Log component props on mount and when challenges change
-  React.useEffect(() => {
-    console.log('=== MATCH HISTORY COMPONENT ===');
-    console.log('Props received:');
-    console.log('  - matches:', matches?.length || 0);
-    console.log('  - teams:', teams?.length || 0);
-    console.log('  - players:', players?.length || 0);
-    console.log('  - challenges:', challenges?.length || 0);
-    console.log('  - challenges data:', challenges);
-    console.log('  - isAuthenticated:', isAuthenticated);
-    console.log('  - userRole:', userRole);
-    console.log('  - userTeamId:', userTeamId);
-    console.log('  - onEnterPendingResults:', typeof onEnterPendingResults);
-    console.log('===============================');
-  }, [challenges, matches, teams, players, isAuthenticated, userRole, userTeamId]);
+  // Enter Results Modal states (simplified for shared modal)
+  const [showResultsModal, setShowResultsModal] = useState(false);
+  const [selectedMatch, setSelectedMatch] = useState(null);
 
   const handleEditMatch = (match) => {
     // Pass the match data to MatchEntry for editing
@@ -58,20 +49,31 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
   const formatSetScores = (match) => {
     const setScores = [];
 
-    // Add Set 1
+    // Determine if team1 or team2 won
+    const isTeam1Winner = match.winner === 'team1';
+
+    // Add Set 1 - show winner's score first
     if (match.set1Team1 !== undefined && match.set1Team2 !== undefined) {
-      setScores.push(`${match.set1Team1}-${match.set1Team2}`);
+      const set1Score = isTeam1Winner
+        ? `${match.set1Team1}-${match.set1Team2}`
+        : `${match.set1Team2}-${match.set1Team1}`;
+      setScores.push(set1Score);
     }
 
-    // Add Set 2
+    // Add Set 2 - show winner's score first
     if (match.set2Team1 !== undefined && match.set2Team2 !== undefined) {
-      setScores.push(`${match.set2Team1}-${match.set2Team2}`);
+      const set2Score = isTeam1Winner
+        ? `${match.set2Team1}-${match.set2Team2}`
+        : `${match.set2Team2}-${match.set2Team1}`;
+      setScores.push(set2Score);
     }
 
-    // Add Set 3 with tiebreaker notation if applicable
+    // Add Set 3 - show winner's score first, with tiebreaker notation if applicable
     if (match.set3Team1 !== undefined && match.set3Team2 !== undefined &&
         (match.set3Team1 !== '' || match.set3Team2 !== '')) {
-      const set3Score = `${match.set3Team1}-${match.set3Team2}`;
+      const set3Score = isTeam1Winner
+        ? `${match.set3Team1}-${match.set3Team2}`
+        : `${match.set3Team2}-${match.set3Team1}`;
       const tbNotation = match.set3IsTiebreaker ? ' TB' : '';
       setScores.push(set3Score + tbNotation);
     }
@@ -109,13 +111,7 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
 
   // Get pending matches (accepted challenges not yet completed)
   const getPendingMatches = () => {
-    console.log('=== MATCH HISTORY: Get Pending Matches ===');
-    console.log('Challenges prop:', challenges);
-    console.log('Challenges type:', typeof challenges);
-    console.log('Challenges is array?:', Array.isArray(challenges));
-
     if (!challenges) {
-      console.log('⚠️ No challenges data available');
       return [];
     }
 
@@ -132,8 +128,6 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
           : dateA - dateB; // Oldest first
       });
 
-    console.log('Accepted challenges found:', pending.length);
-    console.log('Accepted challenges:', pending);
     return pending;
   };
 
@@ -352,6 +346,52 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
     alert('✅ Pending match updated successfully!\n\n⚠️ IMPORTANT: Click the "Save Data" button to save this to the database.');
   };
 
+  // ===== ENTER RESULTS MODAL FUNCTIONS (Simplified for shared modal) =====
+
+  // Open results entry modal
+  const handleOpenResultsModal = (match) => {
+    setSelectedMatch(match);
+    setShowResultsModal(true);
+  };
+
+  // Close results modal
+  const handleCloseResultsModal = () => {
+    setShowResultsModal(false);
+    setSelectedMatch(null);
+  };
+
+  // Handle match result submission from shared modal
+  const handleSubmitResults = async (matchResult) => {
+    if (!selectedMatch) return;
+
+    // Determine which team is team1 and team2
+    const team1Id = selectedMatch.challengerTeamId;
+    const team2Id = selectedMatch.challengedTeamId;
+
+    // Create new completed match
+    const newMatch = {
+      id: Date.now(),
+      matchId: matchResult.matchId,
+      date: matchResult.date,
+      level: matchResult.level,
+      team1Id,
+      team2Id,
+      ...matchResult,
+      team1Players: selectedMatch.challengerPlayers || [],
+      team2Players: selectedMatch.challengedPlayers || [],
+      originChallengeId: selectedMatch.challengeId,
+      scheduledDate: selectedMatch.acceptedDate
+    };
+
+    // Add to matches
+    const updatedMatches = [...matches, newMatch];
+    setMatches(updatedMatches);
+
+    // Remove from challenges
+    const updatedChallenges = challenges.filter(c => c.id !== selectedMatch.id);
+    onChallengesChange(updatedChallenges);
+  };
+
   // Sort matches by scheduled date (if available), then completion date, then by timestamp
   const sortedMatches = [...matches].sort((a, b) => {
     // Prioritize scheduled date (from challenges), fallback to completion date
@@ -408,19 +448,11 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
   // Get and filter pending matches
   const allPendingMatches = getPendingMatches();
 
-  console.log('=== FILTERING PENDING MATCHES ===');
-  console.log('All pending matches before filter:', allPendingMatches.length);
-  console.log('User role:', userRole);
-  console.log('User team ID:', userTeamId);
-
   const filteredPendingMatches = allPendingMatches.filter(challenge => {
-    console.log('Checking challenge:', challenge.id);
-
     // Captain restriction: only show challenges involving their team
     if (userRole === 'captain' && userTeamId) {
       const captainTeamInvolved = challenge.challengerTeamId === userTeamId ||
                                    challenge.challengedTeamId === userTeamId;
-      console.log('  Captain filter - Team involved?', captainTeamInvolved);
       if (!captainTeamInvolved) return false;
     }
 
@@ -443,13 +475,8 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
       if (!challengeHasSelectedPlayer) return false;
     }
 
-    console.log('  Challenge passed all filters');
     return true;
   });
-
-  console.log('Filtered pending matches count:', filteredPendingMatches.length);
-  console.log('Filtered pending matches:', filteredPendingMatches);
-  console.log('=================================');
 
   const totalMatches = matches.length;
   const totalPending = allPendingMatches.length;
@@ -647,12 +674,6 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
       )}
 
       {/* Pending Matches Section */}
-      {(() => {
-        console.log('=== RENDERING PENDING MATCHES SECTION ===');
-        console.log('showPending:', showPending);
-        console.log('filteredPendingMatches.length:', filteredPendingMatches.length);
-        return null;
-      })()}
       {showPending && (
         <section className="mb-8">
           <h3 className="text-xl font-bold mb-4 flex items-center gap-2 text-orange-700">
@@ -683,18 +704,6 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
                   // Get today's date at midnight (local time)
                   const today = new Date();
                   today.setHours(0, 0, 0, 0);
-
-                  // Debug logging
-                  if (challenge.matchId === 'MATCH-2025-004') {
-                    console.log('🔍 Overdue Check for MATCH-2025-004:', {
-                      acceptedDate: challenge.acceptedDate,
-                      scheduledDate: scheduledDate.toISOString(),
-                      oneDayAfter: oneDayAfterScheduled.toISOString(),
-                      today: today.toISOString(),
-                      comparison: `${today.getTime()} >= ${oneDayAfterScheduled.getTime()}`,
-                      isOverdue: today >= oneDayAfterScheduled
-                    });
-                  }
 
                   return today >= oneDayAfterScheduled;
                 })();
@@ -813,9 +822,9 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
                         )}
 
                         {/* Enter Results Button */}
-                        {canEnterResults(challenge) && onEnterPendingResults && (
+                        {canEnterResults(challenge) && (
                           <button
-                            onClick={() => onEnterPendingResults(challenge)}
+                            onClick={() => handleOpenResultsModal(challenge)}
                             className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition-colors font-medium whitespace-nowrap"
                           >
                             <Check className="w-4 h-4" />
@@ -1186,6 +1195,26 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
           </div>
         </div>
       )}
+
+      {/* Enter Results Modal - Shared Component */}
+      <MatchResultsModal
+        isOpen={showResultsModal}
+        match={selectedMatch ? {
+          team1Id: selectedMatch.challengerTeamId,
+          team2Id: selectedMatch.challengedTeamId,
+          matchId: selectedMatch.matchId,
+          acceptedLevel: selectedMatch.acceptedLevel,
+          proposedLevel: selectedMatch.proposedLevel,
+          acceptedDate: selectedMatch.acceptedDate,
+          challengeId: selectedMatch.challengeId
+        } : null}
+        teams={teams}
+        matches={matches}
+        onSubmit={handleSubmitResults}
+        onClose={handleCloseResultsModal}
+        addLog={addLog}
+        ACTION_TYPES={ACTION_TYPES}
+      />
     </div>
   );
 };

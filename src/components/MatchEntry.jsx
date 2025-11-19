@@ -5,6 +5,7 @@ import { formatNTRP, formatDynamic, formatDate } from '../utils/formatters';
 import { tournamentStorage, imageStorage } from '../services/storage';
 import { isSmsEnabled } from '../firebase';
 import { generateMatchId, generateChallengeId } from '../utils/idGenerator';
+import MatchResultsModal from './MatchResultsModal';
 
 const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange, isAuthenticated, setActiveTab, players, captains, onAddPhoto, loginName, userRole, userTeamId, editingMatch, setEditingMatch, addLog }) => {
   const [showMatchForm, setShowMatchForm] = useState(false);
@@ -13,12 +14,19 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
     level: '7.0',
     team1Id: '',
     team2Id: '',
-    set1Team1: '',
-    set1Team2: '',
-    set2Team1: '',
-    set2Team2: '',
-    set3Team1: '',
-    set3Team2: '',
+    matchWinner: '', // 'team1' or 'team2' - selected before entering scores
+    set1Winner: '', // Winner's score in set 1
+    set1Loser: '', // Loser's score in set 1
+    set2Winner: '', // Winner's score in set 2
+    set2Loser: '', // Loser's score in set 2
+    set3Winner: '', // Winner's score in set 3 (if needed)
+    set3Loser: '', // Loser's score in set 3 (if needed)
+    set1Team1: '', // Legacy - mapped from winner/loser scores
+    set1Team2: '', // Legacy - mapped from winner/loser scores
+    set2Team1: '', // Legacy - mapped from winner/loser scores
+    set2Team2: '', // Legacy - mapped from winner/loser scores
+    set3Team1: '', // Legacy - mapped from winner/loser scores
+    set3Team2: '', // Legacy - mapped from winner/loser scores
     set3IsTiebreaker: false,
     team1Players: [],
     team2Players: [],
@@ -39,6 +47,10 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
     notes: ''
   });
 
+  // Match Results Modal state (for entering results for pending matches)
+  const [showResultsModal, setShowResultsModal] = useState(false);
+  const [selectedPendingMatch, setSelectedPendingMatch] = useState(null);
+
   // Pre-populate form when editing a match
   useEffect(() => {
     if (editingMatch) {
@@ -47,11 +59,27 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
         return;
       }
 
+      // Convert legacy team1/team2 scores to winner/loser format
+      const matchWinner = editingMatch.winner || ''; // 'team1' or 'team2'
+      const set1Winner = matchWinner === 'team1' ? editingMatch.set1Team1 : editingMatch.set1Team2;
+      const set1Loser = matchWinner === 'team1' ? editingMatch.set1Team2 : editingMatch.set1Team1;
+      const set2Winner = matchWinner === 'team1' ? editingMatch.set2Team1 : editingMatch.set2Team2;
+      const set2Loser = matchWinner === 'team1' ? editingMatch.set2Team2 : editingMatch.set2Team1;
+      const set3Winner = matchWinner === 'team1' ? editingMatch.set3Team1 : editingMatch.set3Team2;
+      const set3Loser = matchWinner === 'team1' ? editingMatch.set3Team2 : editingMatch.set3Team1;
+
       setMatchFormData({
         date: editingMatch.date || new Date().toISOString().split('T')[0],
         level: editingMatch.level || '7.0',
         team1Id: editingMatch.team1Id ? editingMatch.team1Id.toString() : '',
         team2Id: editingMatch.team2Id ? editingMatch.team2Id.toString() : '',
+        matchWinner: matchWinner,
+        set1Winner: set1Winner || '',
+        set1Loser: set1Loser || '',
+        set2Winner: set2Winner || '',
+        set2Loser: set2Loser || '',
+        set3Winner: set3Winner || '',
+        set3Loser: set3Loser || '',
         set1Team1: editingMatch.set1Team1 || '',
         set1Team2: editingMatch.set1Team2 || '',
         set2Team1: editingMatch.set2Team1 || '',
@@ -67,11 +95,73 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
     }
   }, [editingMatch]);
 
+  // Helper: Sync winner/loser scores to team1/team2 scores (for backwards compatibility)
+  const syncWinnerLoserToTeamScores = (winner, set1W, set1L, set2W, set2L, set3W, set3L) => {
+    if (winner === 'team1') {
+      return {
+        set1Team1: set1W,
+        set1Team2: set1L,
+        set2Team1: set2W,
+        set2Team2: set2L,
+        set3Team1: set3W,
+        set3Team2: set3L
+      };
+    } else if (winner === 'team2') {
+      return {
+        set1Team1: set1L,
+        set1Team2: set1W,
+        set2Team1: set2L,
+        set2Team2: set2W,
+        set3Team1: set3L,
+        set3Team2: set3W
+      };
+    }
+    return {};
+  };
+
+  // Tennis score validation - validates if two scores form a valid tennis set
+  const validateTennisScore = (score1, score2, isTiebreaker = false, isSet3 = false) => {
+    const s1 = parseInt(score1) || 0;
+    const s2 = parseInt(score2) || 0;
+
+    if (s1 === 0 && s2 === 0) return { valid: true, error: '' }; // Empty scores are okay
+
+    // Match tiebreak (third set when split): 1-0 or 0-1 is valid
+    if (isSet3 && ((s1 === 1 && s2 === 0) || (s1 === 0 && s2 === 1))) {
+      return { valid: true, error: '', isMatchTiebreak: true };
+    }
+
+    if (isTiebreaker) {
+      // 10-point tiebreaker: one score must be 10+, other < 10, and winner ahead by 2+
+      const higher = Math.max(s1, s2);
+      const lower = Math.min(s1, s2);
+      if (higher < 10) return { valid: false, error: 'Tiebreaker winner must score at least 10 points' };
+      if (lower >= 10) return { valid: false, error: 'Tiebreaker loser must score less than 10 points' };
+      if (higher - lower < 2) return { valid: false, error: 'Tiebreaker must be won by 2+ points' };
+      return { valid: true, error: '' };
+    }
+
+    // Regular set validation - check if scores form a valid tennis set
+    // Valid set scores: 6-0, 6-1, 6-2, 6-3, 6-4, 7-5, 7-6 (and reverse: 0-6, 1-6, etc.)
+    const higher = Math.max(s1, s2);
+    const lower = Math.min(s1, s2);
+
+    // One score must be higher than the other (no ties in tennis)
+    if (s1 === s2) return { valid: false, error: 'Tennis sets cannot be tied' };
+
+    // Valid endings: 6-0, 6-1, 6-2, 6-3, 6-4, 7-5, 7-6
+    if (higher === 6 && lower <= 4) return { valid: true, error: '' };
+    if (higher === 7 && (lower === 5 || lower === 6)) return { valid: true, error: '' };
+
+    return { valid: false, error: 'Invalid tennis score (must be 6-0 through 6-4, 7-5, 7-6, or 1-0 for match tiebreak)' };
+  };
+
   // Debug: Track form data changes
   useEffect(() => {
     console.log('🔄 Form Data Changed:', matchFormData);
     console.log('   Team 1 ID:', matchFormData.team1Id);
     console.log('   Team 2 ID:', matchFormData.team2Id);
+    console.log('   Match Winner:', matchFormData.matchWinner);
     console.log('   Team 1 Players:', matchFormData.team1Players);
     console.log('   Team 2 Players:', matchFormData.team2Players);
   }, [matchFormData]);
@@ -140,30 +230,37 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
   };
 
   const getMatchResultsDisplay = () => {
-    const results = calculateMatchResults();
-    if (!results.isValid) return null;
+    // Use the selected winner from the dropdown, not calculated from scores
+    if (!matchFormData.matchWinner) return null;
 
-    const team1Name = teams.find(t => t.id === parseInt(matchFormData.team1Id))?.name || 'Team 1';
-    const team2Name = teams.find(t => t.id === parseInt(matchFormData.team2Id))?.name || 'Team 2';
-    const winnerName = results.winner === 'team1' ? team1Name : team2Name;
+    // Check if we have valid scores
+    if (!matchFormData.set1Winner || !matchFormData.set1Loser ||
+        !matchFormData.set2Winner || !matchFormData.set2Loser) {
+      return null;
+    }
 
+    // Get the winning team name from the selected winner
+    const winningTeam = teams.find(t =>
+      t.id === parseInt(matchFormData.matchWinner === 'team1' ? matchFormData.team1Id : matchFormData.team2Id)
+    );
+    const winnerName = winningTeam?.name || 'Winner';
+
+    // Build score display from winner's perspective (winner's score first)
     const setScores = [];
-    if (matchFormData.set1Team1 && matchFormData.set1Team2) {
-      setScores.push(`${matchFormData.set1Team1}-${matchFormData.set1Team2}`);
+    if (matchFormData.set1Winner && matchFormData.set1Loser) {
+      setScores.push(`${matchFormData.set1Winner}-${matchFormData.set1Loser}`);
     }
-    if (matchFormData.set2Team1 && matchFormData.set2Team2) {
-      setScores.push(`${matchFormData.set2Team1}-${matchFormData.set2Team2}`);
+    if (matchFormData.set2Winner && matchFormData.set2Loser) {
+      setScores.push(`${matchFormData.set2Winner}-${matchFormData.set2Loser}`);
     }
-    if (matchFormData.set3Team1 && matchFormData.set3Team2) {
+    if (matchFormData.set3Winner && matchFormData.set3Loser) {
       const set3Label = matchFormData.set3IsTiebreaker ? ' (TB)' : '';
-      setScores.push(`${matchFormData.set3Team1}-${matchFormData.set3Team2}${set3Label}`);
+      setScores.push(`${matchFormData.set3Winner}-${matchFormData.set3Loser}${set3Label}`);
     }
 
     return {
       winnerName,
-      setScores: setScores.join(', '),
-      team1Sets: results.team1Sets,
-      team2Sets: results.team2Sets
+      setScores: setScores.join(', ')
     };
   };
 
@@ -671,6 +768,44 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
       return;
     }
 
+    // Additional validation for winner-centric scoring
+    if (matchFormData.matchWinner && matchFormData.set1Winner && matchFormData.set2Winner) {
+      // Determine who won each set
+      const set1WinnerWon = parseInt(matchFormData.set1Winner) > parseInt(matchFormData.set1Loser);
+      const set2WinnerWon = parseInt(matchFormData.set2Winner) > parseInt(matchFormData.set2Loser);
+
+      // Check if sets are split (1-1)
+      const setsSplit = set1WinnerWon !== set2WinnerWon;
+
+      // If sets are split, third set is REQUIRED
+      if (setsSplit && (!matchFormData.set3Winner || !matchFormData.set3Loser)) {
+        alert('⚠️ Sets are split 1-1. A third set (match tiebreak) is required.\n\nEnter 1-0 for the tiebreak winner.');
+        return;
+      }
+
+      // If sets are NOT split (winner won both), third set should NOT be entered
+      if (!setsSplit && matchFormData.set3Winner && matchFormData.set3Loser) {
+        alert('⚠️ The selected winner won both sets. A third set should not be entered.');
+        return;
+      }
+
+      // If third set is entered, validate that the selected winner actually won 2 out of 3 sets
+      if (matchFormData.set3Winner && matchFormData.set3Loser) {
+        const set3WinnerWon = parseInt(matchFormData.set3Winner) > parseInt(matchFormData.set3Loser);
+
+        // Count how many sets the selected winner won
+        let selectedWinnerSetsWon = 0;
+        if (set1WinnerWon) selectedWinnerSetsWon++;
+        if (set2WinnerWon) selectedWinnerSetsWon++;
+        if (set3WinnerWon) selectedWinnerSetsWon++;
+
+        if (selectedWinnerSetsWon < 2) {
+          alert('⚠️ The selected winner did not win 2 out of 3 sets.\n\nPlease check your scores or select the correct winner.');
+          return;
+        }
+      }
+    }
+
     // Determine if this is a pending match or a regular edit
     const isPendingMatch = editingMatch && editingMatch.isPendingMatch;
 
@@ -960,6 +1095,13 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
         level: '7.0',
         team1Id: '',
         team2Id: '',
+        matchWinner: '',
+        set1Winner: '',
+        set1Loser: '',
+        set2Winner: '',
+        set2Loser: '',
+        set3Winner: '',
+        set3Loser: '',
         set1Team1: '',
         set1Team2: '',
         set2Team1: '',
@@ -982,6 +1124,13 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
       level: '7.0',
       team1Id: userRole === 'captain' && userTeamId ? userTeamId.toString() : '', // Auto-select captain's team
       team2Id: '',
+      matchWinner: '',
+      set1Winner: '',
+      set1Loser: '',
+      set2Winner: '',
+      set2Loser: '',
+      set3Winner: '',
+      set3Loser: '',
       set1Team1: '',
       set1Team2: '',
       set2Team1: '',
@@ -1087,66 +1236,69 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
 
   // Handle entering results for a pending match
   const handleEnterPendingResults = (pendingMatch) => {
-    console.log('=== ENTERING PENDING MATCH RESULTS ===');
-    console.log('Pending Match:', pendingMatch);
-    console.log('Challenging Team ID:', pendingMatch?.challengerTeamId);
-    console.log('Challenged Team ID:', pendingMatch?.challengedTeamId);
-    console.log('Challenging Players:', pendingMatch?.challengerPlayers);
-    console.log('Challenged Players:', pendingMatch?.challengedPlayers);
-    console.log('All Teams:', teams);
-    console.log('All Players:', players);
+    // Open the MatchResultsModal with the pending match data
+    setSelectedPendingMatch(pendingMatch);
+    setShowResultsModal(true);
+  };
 
-    // Find the team objects
-    const team1 = teams.find(t => t.id === pendingMatch.challengerTeamId);
-    const team2 = teams.find(t => t.id === pendingMatch.challengedTeamId);
-    console.log('Found Team 1:', team1);
-    console.log('Found Team 2:', team2);
+  // Handle match result submission from MatchResultsModal
+  const handleSubmitPendingResults = async (matchResult) => {
+    if (!selectedPendingMatch) return;
 
-    // Verify player IDs exist in players array
-    if (pendingMatch.challengerPlayers) {
-      console.log('Team 1 Player Lookup:');
-      pendingMatch.challengerPlayers.forEach(playerId => {
-        const player = players.find(p => p.id === playerId);
-        console.log(`  Player ID ${playerId}:`, player ? `${player.firstName} ${player.lastName}` : 'NOT FOUND');
-      });
+    // Determine which team is team1 and team2
+    const team1Id = selectedPendingMatch.challengerTeamId;
+    const team2Id = selectedPendingMatch.challengedTeamId;
+
+    // Create new completed match
+    const newMatch = {
+      id: Date.now(),
+      matchId: matchResult.matchId,
+      date: matchResult.date,
+      level: matchResult.level,
+      team1Id,
+      team2Id,
+      ...matchResult,
+      team1Players: selectedPendingMatch.challengerPlayers || [],
+      team2Players: selectedPendingMatch.challengedPlayers || [],
+      originChallengeId: selectedPendingMatch.challengeId,
+      scheduledDate: selectedPendingMatch.acceptedDate,
+      fromChallenge: true,
+      timestamp: matchResult.timestamp
+    };
+
+    // Add to matches
+    const updatedMatches = [...matches, newMatch];
+    setMatches(updatedMatches);
+
+    // Remove from challenges
+    const updatedChallenges = challenges.filter(c => c.id !== selectedPendingMatch.id);
+    onChallengesChange(updatedChallenges);
+
+    // Log activity
+    if (addLog) {
+      const team1 = teams.find(t => t.id === team1Id);
+      const team2 = teams.find(t => t.id === team2Id);
+      addLog(
+        ACTION_TYPES.MATCH_COMPLETED,
+        {
+          matchId: matchResult.matchId,
+          team1Name: team1?.name || 'Team 1',
+          team2Name: team2?.name || 'Team 2',
+          fromChallenge: true
+        },
+        newMatch.id
+      );
     }
 
-    if (pendingMatch.challengedPlayers) {
-      console.log('Team 2 Player Lookup:');
-      pendingMatch.challengedPlayers.forEach(playerId => {
-        const player = players.find(p => p.id === playerId);
-        console.log(`  Player ID ${playerId}:`, player ? `${player.firstName} ${player.lastName}` : 'NOT FOUND');
-      });
-    }
+    // Close modal
+    setShowResultsModal(false);
+    setSelectedPendingMatch(null);
+  };
 
-    // Pre-fill the form with pending match data
-    setMatchFormData({
-      date: pendingMatch.acceptedDate || new Date().toISOString().split('T')[0],
-      level: pendingMatch.acceptedLevel || pendingMatch.proposedLevel,
-      team1Id: pendingMatch.challengerTeamId.toString(),
-      team2Id: pendingMatch.challengedTeamId.toString(),
-      set1Team1: '',
-      set1Team2: '',
-      set2Team1: '',
-      set2Team2: '',
-      set3Team1: '',
-      set3Team2: '',
-      set3IsTiebreaker: false,
-      team1Players: pendingMatch.challengerPlayers || [],
-      team2Players: pendingMatch.challengedPlayers || [],
-      notes: pendingMatch.notes || ''
-    });
-
-    console.log('Match Form Data Set:', {
-      team1Id: pendingMatch.challengerTeamId.toString(),
-      team2Id: pendingMatch.challengedTeamId.toString(),
-      team1Players: pendingMatch.challengerPlayers || [],
-      team2Players: pendingMatch.challengedPlayers || []
-    });
-
-    // Store reference to the pending match so we can update it after saving
-    setEditingMatch({ ...pendingMatch, isPendingMatch: true });
-    setShowMatchForm(true);
+  // Close results modal
+  const handleCloseResultsModal = () => {
+    setShowResultsModal(false);
+    setSelectedPendingMatch(null);
   };
 
   // Handle deleting a pending match (directors only)
@@ -1915,73 +2067,193 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
                     />
                   </div>
 
-                  {/* Set Scores Section - Matches Regular Form Styling */}
+                  {/* Match Winner Selection */}
+                  {matchFormData.team1Id && matchFormData.team2Id && !matchFormData.matchWinner && (
+                    <div className="col-span-2 bg-yellow-50 border-2 border-yellow-400 rounded-lg p-4">
+                      <label className="block text-sm font-bold mb-2 text-gray-900">
+                        Match Winner <span className="text-red-600">*</span>
+                      </label>
+                      <p className="text-xs text-gray-600 mb-3">
+                        Select which team won the match. Scores will be entered from the winner's perspective.
+                      </p>
+                      <div className="flex gap-4">
+                        <label className="flex items-center gap-2 cursor-pointer bg-white px-4 py-3 rounded-lg border-2 border-gray-300 hover:border-blue-500 transition-colors flex-1">
+                          <input
+                            type="radio"
+                            name="matchWinner"
+                            value="team1"
+                            checked={matchFormData.matchWinner === 'team1'}
+                            onChange={(e) => setMatchFormData({...matchFormData, matchWinner: e.target.value})}
+                            className="w-5 h-5"
+                          />
+                          <span className="font-semibold text-lg">
+                            {teams.find(t => t.id === parseInt(matchFormData.team1Id))?.name || 'Team 1'}
+                          </span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer bg-white px-4 py-3 rounded-lg border-2 border-gray-300 hover:border-blue-500 transition-colors flex-1">
+                          <input
+                            type="radio"
+                            name="matchWinner"
+                            value="team2"
+                            checked={matchFormData.matchWinner === 'team2'}
+                            onChange={(e) => setMatchFormData({...matchFormData, matchWinner: e.target.value})}
+                            className="w-5 h-5"
+                          />
+                          <span className="font-semibold text-lg">
+                            {teams.find(t => t.id === parseInt(matchFormData.team2Id))?.name || 'Team 2'}
+                          </span>
+                        </label>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Set Scores Section - Winner-Centric Entry */}
+                  {matchFormData.matchWinner ? (() => {
+                    // Get team names dynamically based on selected winner
+                    const winningTeam = teams.find(t =>
+                      t.id === parseInt(matchFormData.matchWinner === 'team1' ? matchFormData.team1Id : matchFormData.team2Id)
+                    );
+                    const losingTeam = teams.find(t =>
+                      t.id === parseInt(matchFormData.matchWinner === 'team1' ? matchFormData.team2Id : matchFormData.team1Id)
+                    );
+                    const winnerName = winningTeam?.name || 'Winner';
+                    const loserName = losingTeam?.name || 'Loser';
+
+                    return (
                   <div className="bg-green-100 border-2 border-green-400 rounded-lg p-4">
-                    <h4 className="font-semibold text-lg mb-3">Set Scores *</h4>
+                    <h4 className="font-semibold text-lg mb-2">Set Scores *</h4>
+                    <p className="text-xs text-gray-700 mb-3">
+                      Enter scores from {winnerName}'s perspective (winning team)
+                    </p>
 
                     {/* Set 1 */}
                     <div className="mb-3">
                       <label className="block text-sm font-semibold mb-2">Set 1:</label>
                       <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold text-green-700 w-24 text-right">{winnerName}</span>
                         <input
                           type="number"
                           min="0"
                           max="7"
-                          value={matchFormData.set1Team1}
-                          onChange={(e) => setMatchFormData({...matchFormData, set1Team1: e.target.value})}
-                          className="w-16 px-2 py-2 border rounded text-center"
-                          placeholder="0"
+                          value={matchFormData.set1Winner}
+                          onChange={(e) => {
+                            const newData = {...matchFormData, set1Winner: e.target.value};
+                            const syncedScores = syncWinnerLoserToTeamScores(
+                              newData.matchWinner,
+                              newData.set1Winner, newData.set1Loser,
+                              newData.set2Winner, newData.set2Loser,
+                              newData.set3Winner, newData.set3Loser
+                            );
+                            setMatchFormData({...newData, ...syncedScores});
+                          }}
+                          className="w-16 px-2 py-2 border-2 border-green-500 rounded text-center font-bold"
+                          placeholder="6"
                         />
                         <span className="font-bold">-</span>
                         <input
                           type="number"
                           min="0"
                           max="7"
-                          value={matchFormData.set1Team2}
-                          onChange={(e) => setMatchFormData({...matchFormData, set1Team2: e.target.value})}
-                          className="w-16 px-2 py-2 border rounded text-center"
-                          placeholder="0"
+                          value={matchFormData.set1Loser}
+                          onChange={(e) => {
+                            const newData = {...matchFormData, set1Loser: e.target.value};
+                            const syncedScores = syncWinnerLoserToTeamScores(
+                              newData.matchWinner,
+                              newData.set1Winner, newData.set1Loser,
+                              newData.set2Winner, newData.set2Loser,
+                              newData.set3Winner, newData.set3Loser
+                            );
+                            setMatchFormData({...newData, ...syncedScores});
+                          }}
+                          className="w-16 px-2 py-2 border-2 border-gray-300 rounded text-center"
+                          placeholder="4"
                         />
+                        <span className="text-xs font-semibold text-gray-600 w-24">{loserName}</span>
                       </div>
+                      {(() => {
+                        const validation = validateTennisScore(matchFormData.set1Winner, matchFormData.set1Loser, false);
+                        return !validation.valid && matchFormData.set1Winner && matchFormData.set1Loser && (
+                          <p className="text-xs text-red-600 mt-1">⚠️ {validation.error}</p>
+                        );
+                      })()}
                     </div>
 
                     {/* Set 2 */}
                     <div className="mb-3">
                       <label className="block text-sm font-semibold mb-2">Set 2:</label>
                       <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold text-green-700 w-24 text-right">{winnerName}</span>
                         <input
                           type="number"
                           min="0"
                           max="7"
-                          value={matchFormData.set2Team1}
-                          onChange={(e) => setMatchFormData({...matchFormData, set2Team1: e.target.value})}
-                          className="w-16 px-2 py-2 border rounded text-center"
-                          placeholder="0"
+                          value={matchFormData.set2Winner}
+                          onChange={(e) => {
+                            const newData = {...matchFormData, set2Winner: e.target.value};
+                            const syncedScores = syncWinnerLoserToTeamScores(
+                              newData.matchWinner,
+                              newData.set1Winner, newData.set1Loser,
+                              newData.set2Winner, newData.set2Loser,
+                              newData.set3Winner, newData.set3Loser
+                            );
+                            setMatchFormData({...newData, ...syncedScores});
+                          }}
+                          className="w-16 px-2 py-2 border-2 border-green-500 rounded text-center font-bold"
+                          placeholder="6"
                         />
                         <span className="font-bold">-</span>
                         <input
                           type="number"
                           min="0"
                           max="7"
-                          value={matchFormData.set2Team2}
-                          onChange={(e) => setMatchFormData({...matchFormData, set2Team2: e.target.value})}
-                          className="w-16 px-2 py-2 border rounded text-center"
-                          placeholder="0"
+                          value={matchFormData.set2Loser}
+                          onChange={(e) => {
+                            const newData = {...matchFormData, set2Loser: e.target.value};
+                            const syncedScores = syncWinnerLoserToTeamScores(
+                              newData.matchWinner,
+                              newData.set1Winner, newData.set1Loser,
+                              newData.set2Winner, newData.set2Loser,
+                              newData.set3Winner, newData.set3Loser
+                            );
+                            setMatchFormData({...newData, ...syncedScores});
+                          }}
+                          className="w-16 px-2 py-2 border-2 border-gray-300 rounded text-center"
+                          placeholder="3"
                         />
+                        <span className="text-xs font-semibold text-gray-600 w-24">{loserName}</span>
                       </div>
+                      {(() => {
+                        const validation = validateTennisScore(matchFormData.set2Winner, matchFormData.set2Loser, false);
+                        return !validation.valid && matchFormData.set2Winner && matchFormData.set2Loser && (
+                          <p className="text-xs text-red-600 mt-1">⚠️ {validation.error}</p>
+                        );
+                      })()}
                     </div>
 
                     {/* Set 3 */}
                     <div className="mb-3">
-                      <label className="block text-sm font-semibold mb-2">Set 3 (if needed):</label>
+                      <label className="block text-sm font-semibold mb-1">Set 3 (if needed):</label>
+                      <p className="text-xs text-gray-600 mb-2">
+                        💡 If sets are split 1-1, enter <strong>1-0</strong> for the match tiebreak winner
+                      </p>
                       <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold text-green-700 w-24 text-right">{winnerName}</span>
                         <input
                           type="number"
                           min="0"
                           max={matchFormData.set3IsTiebreaker ? "10" : "7"}
-                          value={matchFormData.set3Team1}
-                          onChange={(e) => setMatchFormData({...matchFormData, set3Team1: e.target.value})}
-                          className="w-16 px-2 py-2 border rounded text-center"
+                          value={matchFormData.set3Winner}
+                          onChange={(e) => {
+                            const newData = {...matchFormData, set3Winner: e.target.value};
+                            const syncedScores = syncWinnerLoserToTeamScores(
+                              newData.matchWinner,
+                              newData.set1Winner, newData.set1Loser,
+                              newData.set2Winner, newData.set2Loser,
+                              newData.set3Winner, newData.set3Loser
+                            );
+                            setMatchFormData({...newData, ...syncedScores});
+                          }}
+                          className="w-16 px-2 py-2 border-2 border-green-500 rounded text-center font-bold"
                           placeholder="0"
                         />
                         <span className="font-bold">-</span>
@@ -1989,22 +2261,40 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
                           type="number"
                           min="0"
                           max={matchFormData.set3IsTiebreaker ? "10" : "7"}
-                          value={matchFormData.set3Team2}
-                          onChange={(e) => setMatchFormData({...matchFormData, set3Team2: e.target.value})}
-                          className="w-16 px-2 py-2 border rounded text-center"
+                          value={matchFormData.set3Loser}
+                          onChange={(e) => {
+                            const newData = {...matchFormData, set3Loser: e.target.value};
+                            const syncedScores = syncWinnerLoserToTeamScores(
+                              newData.matchWinner,
+                              newData.set1Winner, newData.set1Loser,
+                              newData.set2Winner, newData.set2Loser,
+                              newData.set3Winner, newData.set3Loser
+                            );
+                            setMatchFormData({...newData, ...syncedScores});
+                          }}
+                          className="w-16 px-2 py-2 border-2 border-gray-300 rounded text-center"
                           placeholder="0"
                         />
+                        <span className="text-xs font-semibold text-gray-600 w-24">{loserName}</span>
                       </div>
-                      {(matchFormData.set3Team1 || matchFormData.set3Team2) && (
-                        <label className="flex items-center gap-2 mt-2 text-sm">
-                          <input
-                            type="checkbox"
-                            checked={matchFormData.set3IsTiebreaker}
-                            onChange={(e) => setMatchFormData({...matchFormData, set3IsTiebreaker: e.target.checked})}
-                            className="w-4 h-4"
-                          />
-                          <span>Set 3 was a 10-point tiebreaker</span>
-                        </label>
+                      {(matchFormData.set3Winner || matchFormData.set3Loser) && (
+                        <>
+                          <label className="flex items-center gap-2 mt-2 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={matchFormData.set3IsTiebreaker}
+                              onChange={(e) => setMatchFormData({...matchFormData, set3IsTiebreaker: e.target.checked})}
+                              className="w-4 h-4"
+                            />
+                            <span>Set 3 was a 10-point tiebreaker</span>
+                          </label>
+                          {(() => {
+                            const validation = validateTennisScore(matchFormData.set3Winner, matchFormData.set3Loser, matchFormData.set3IsTiebreaker, true);
+                            return !validation.valid && matchFormData.set3Winner && matchFormData.set3Loser && (
+                              <p className="text-xs text-red-600 mt-1">⚠️ {validation.error}</p>
+                            );
+                          })()}
+                        </>
                       )}
                     </div>
 
@@ -2013,14 +2303,19 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
                       <div className="mt-4 p-3 bg-white rounded border-2 border-green-500">
                         <p className="text-sm font-semibold text-green-800 mb-1">Match Result:</p>
                         <p className="text-lg font-bold text-green-900">
-                          Winner: {getMatchResultsDisplay().winnerName}
-                        </p>
-                        <p className="text-sm text-gray-700">
-                          {getMatchResultsDisplay().setScores}
+                          Winner: {getMatchResultsDisplay().winnerName} <span className="text-blue-600">{getMatchResultsDisplay().setScores}</span>
                         </p>
                       </div>
                     )}
                   </div>
+                  );
+                  })() : (
+                    <div className="bg-gray-100 border-2 border-gray-300 rounded-lg p-4 text-center">
+                      <p className="text-gray-600 font-semibold">
+                        👆 Please select the match winner above to enter scores
+                      </p>
+                    </div>
+                  )}
 
                   {/* Photo Upload Section - Matches Regular Form Styling */}
                   <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4">
@@ -2153,6 +2448,46 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
                     </select>
                   </div>
 
+                  {/* Match Winner Selection - NEW */}
+                  {matchFormData.team1Id && matchFormData.team2Id && (
+                    <div className="col-span-2 bg-yellow-50 border-2 border-yellow-400 rounded-lg p-4">
+                      <label className="block text-sm font-bold mb-2 text-gray-900">
+                        Match Winner <span className="text-red-600">*</span>
+                      </label>
+                      <p className="text-xs text-gray-600 mb-3">
+                        Select which team won the match. Scores will be entered from the winner's perspective.
+                      </p>
+                      <div className="flex gap-4">
+                        <label className="flex items-center gap-2 cursor-pointer bg-white px-4 py-3 rounded-lg border-2 border-gray-300 hover:border-blue-500 transition-colors flex-1">
+                          <input
+                            type="radio"
+                            name="matchWinner"
+                            value="team1"
+                            checked={matchFormData.matchWinner === 'team1'}
+                            onChange={(e) => setMatchFormData({...matchFormData, matchWinner: e.target.value})}
+                            className="w-5 h-5"
+                          />
+                          <span className="font-semibold text-lg">
+                            {teams.find(t => t.id === parseInt(matchFormData.team1Id))?.name || 'Team 1'}
+                          </span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer bg-white px-4 py-3 rounded-lg border-2 border-gray-300 hover:border-blue-500 transition-colors flex-1">
+                          <input
+                            type="radio"
+                            name="matchWinner"
+                            value="team2"
+                            checked={matchFormData.matchWinner === 'team2'}
+                            onChange={(e) => setMatchFormData({...matchFormData, matchWinner: e.target.value})}
+                            className="w-5 h-5"
+                          />
+                          <span className="font-semibold text-lg">
+                            {teams.find(t => t.id === parseInt(matchFormData.team2Id))?.name || 'Team 2'}
+                          </span>
+                        </label>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Team 1 Players */}
                   {matchFormData.team1Id && team1Players.length > 0 && (
                     <div className="col-span-2 bg-blue-50 border border-blue-200 rounded p-3">
@@ -2201,112 +2536,220 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
                     </div>
                   )}
 
-                  {/* Set Scores Section */}
-                  <div className="col-span-2 bg-green-100 border-2 border-green-400 rounded-lg p-4">
-                    <h4 className="font-semibold text-lg mb-3">Set Scores *</h4>
+                  {/* Set Scores Section - Winner-Centric Entry */}
+                  {matchFormData.matchWinner && (() => {
+                    // Get team names dynamically based on selected winner
+                    const winningTeam = teams.find(t =>
+                      t.id === parseInt(matchFormData.matchWinner === 'team1' ? matchFormData.team1Id : matchFormData.team2Id)
+                    );
+                    const losingTeam = teams.find(t =>
+                      t.id === parseInt(matchFormData.matchWinner === 'team1' ? matchFormData.team2Id : matchFormData.team1Id)
+                    );
+                    const winnerName = winningTeam?.name || 'Winner';
+                    const loserName = losingTeam?.name || 'Loser';
 
-                    {/* Set 1 */}
-                    <div className="mb-3">
-                      <label className="block text-sm font-semibold mb-2">Set 1:</label>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="number"
-                          min="0"
-                          max="7"
-                          value={matchFormData.set1Team1}
-                          onChange={(e) => setMatchFormData({...matchFormData, set1Team1: e.target.value})}
-                          className="w-16 px-2 py-2 border rounded text-center"
-                          placeholder="0"
-                        />
-                        <span className="font-bold">-</span>
-                        <input
-                          type="number"
-                          min="0"
-                          max="7"
-                          value={matchFormData.set1Team2}
-                          onChange={(e) => setMatchFormData({...matchFormData, set1Team2: e.target.value})}
-                          className="w-16 px-2 py-2 border rounded text-center"
-                          placeholder="0"
-                        />
-                      </div>
-                    </div>
+                    return (
+                    <div className="col-span-2 bg-green-100 border-2 border-green-400 rounded-lg p-4">
+                      <h4 className="font-semibold text-lg mb-2">Set Scores *</h4>
+                      <p className="text-xs text-gray-700 mb-3">
+                        Enter scores from {winnerName}'s perspective (winning team)
+                      </p>
 
-                    {/* Set 2 */}
-                    <div className="mb-3">
-                      <label className="block text-sm font-semibold mb-2">Set 2:</label>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="number"
-                          min="0"
-                          max="7"
-                          value={matchFormData.set2Team1}
-                          onChange={(e) => setMatchFormData({...matchFormData, set2Team1: e.target.value})}
-                          className="w-16 px-2 py-2 border rounded text-center"
-                          placeholder="0"
-                        />
-                        <span className="font-bold">-</span>
-                        <input
-                          type="number"
-                          min="0"
-                          max="7"
-                          value={matchFormData.set2Team2}
-                          onChange={(e) => setMatchFormData({...matchFormData, set2Team2: e.target.value})}
-                          className="w-16 px-2 py-2 border rounded text-center"
-                          placeholder="0"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Set 3 */}
-                    <div className="mb-3">
-                      <label className="block text-sm font-semibold mb-2">Set 3 (if needed):</label>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="number"
-                          min="0"
-                          max={matchFormData.set3IsTiebreaker ? "10" : "7"}
-                          value={matchFormData.set3Team1}
-                          onChange={(e) => setMatchFormData({...matchFormData, set3Team1: e.target.value})}
-                          className="w-16 px-2 py-2 border rounded text-center"
-                          placeholder="0"
-                        />
-                        <span className="font-bold">-</span>
-                        <input
-                          type="number"
-                          min="0"
-                          max={matchFormData.set3IsTiebreaker ? "10" : "7"}
-                          value={matchFormData.set3Team2}
-                          onChange={(e) => setMatchFormData({...matchFormData, set3Team2: e.target.value})}
-                          className="w-16 px-2 py-2 border rounded text-center"
-                          placeholder="0"
-                        />
-                      </div>
-                      {(matchFormData.set3Team1 || matchFormData.set3Team2) && (
-                        <label className="flex items-center gap-2 mt-2 text-sm">
+                      {/* Set 1 */}
+                      <div className="mb-3">
+                        <label className="block text-sm font-semibold mb-2">Set 1:</label>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-semibold text-green-700 w-24 text-right">{winnerName}</span>
                           <input
-                            type="checkbox"
-                            checked={matchFormData.set3IsTiebreaker}
-                            onChange={(e) => setMatchFormData({...matchFormData, set3IsTiebreaker: e.target.checked})}
-                            className="w-4 h-4"
+                            type="number"
+                            min="0"
+                            max="7"
+                            value={matchFormData.set1Winner}
+                            onChange={(e) => {
+                              const newData = {...matchFormData, set1Winner: e.target.value};
+                              // Sync to team1/team2 fields
+                              const syncedScores = syncWinnerLoserToTeamScores(
+                                newData.matchWinner,
+                                newData.set1Winner, newData.set1Loser,
+                                newData.set2Winner, newData.set2Loser,
+                                newData.set3Winner, newData.set3Loser
+                              );
+                              setMatchFormData({...newData, ...syncedScores});
+                            }}
+                            className="w-16 px-2 py-2 border-2 border-green-500 rounded text-center font-bold"
+                            placeholder="6"
                           />
-                          <span>Set 3 was a 10-point tiebreaker</span>
-                        </label>
-                      )}
-                    </div>
+                          <span className="font-bold">-</span>
+                          <input
+                            type="number"
+                            min="0"
+                            max="7"
+                            value={matchFormData.set1Loser}
+                            onChange={(e) => {
+                              const newData = {...matchFormData, set1Loser: e.target.value};
+                              const syncedScores = syncWinnerLoserToTeamScores(
+                                newData.matchWinner,
+                                newData.set1Winner, newData.set1Loser,
+                                newData.set2Winner, newData.set2Loser,
+                                newData.set3Winner, newData.set3Loser
+                              );
+                              setMatchFormData({...newData, ...syncedScores});
+                            }}
+                            className="w-16 px-2 py-2 border-2 border-gray-300 rounded text-center"
+                            placeholder="4"
+                          />
+                          <span className="text-xs font-semibold text-gray-600 w-24">{loserName}</span>
+                        </div>
+                        {(() => {
+                          const validation = validateTennisScore(matchFormData.set1Winner, matchFormData.set1Loser, false);
+                          return !validation.valid && matchFormData.set1Winner && matchFormData.set1Loser && (
+                            <p className="text-xs text-red-600 mt-1">⚠️ {validation.error}</p>
+                          );
+                        })()}
+                      </div>
+
+                      {/* Set 2 */}
+                      <div className="mb-3">
+                        <label className="block text-sm font-semibold mb-2">Set 2:</label>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-semibold text-green-700 w-24 text-right">{winnerName}</span>
+                          <input
+                            type="number"
+                            min="0"
+                            max="7"
+                            value={matchFormData.set2Winner}
+                            onChange={(e) => {
+                              const newData = {...matchFormData, set2Winner: e.target.value};
+                              const syncedScores = syncWinnerLoserToTeamScores(
+                                newData.matchWinner,
+                                newData.set1Winner, newData.set1Loser,
+                                newData.set2Winner, newData.set2Loser,
+                                newData.set3Winner, newData.set3Loser
+                              );
+                              setMatchFormData({...newData, ...syncedScores});
+                            }}
+                            className="w-16 px-2 py-2 border-2 border-green-500 rounded text-center font-bold"
+                            placeholder="6"
+                          />
+                          <span className="font-bold">-</span>
+                          <input
+                            type="number"
+                            min="0"
+                            max="7"
+                            value={matchFormData.set2Loser}
+                            onChange={(e) => {
+                              const newData = {...matchFormData, set2Loser: e.target.value};
+                              const syncedScores = syncWinnerLoserToTeamScores(
+                                newData.matchWinner,
+                                newData.set1Winner, newData.set1Loser,
+                                newData.set2Winner, newData.set2Loser,
+                                newData.set3Winner, newData.set3Loser
+                              );
+                              setMatchFormData({...newData, ...syncedScores});
+                            }}
+                            className="w-16 px-2 py-2 border-2 border-gray-300 rounded text-center"
+                            placeholder="3"
+                          />
+                          <span className="text-xs font-semibold text-gray-600 w-24">{loserName}</span>
+                        </div>
+                        {(() => {
+                          const validation = validateTennisScore(matchFormData.set2Winner, matchFormData.set2Loser, false);
+                          return !validation.valid && matchFormData.set2Winner && matchFormData.set2Loser && (
+                            <p className="text-xs text-red-600 mt-1">⚠️ {validation.error}</p>
+                          );
+                        })()}
+                      </div>
+
+                      {/* Set 3 */}
+                      <div className="mb-3">
+                        <label className="block text-sm font-semibold mb-1">Set 3 (if needed):</label>
+                        <p className="text-xs text-gray-600 mb-2">
+                          💡 If sets are split 1-1, enter <strong>1-0</strong> for the match tiebreak winner
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-semibold text-green-700 w-24 text-right">{winnerName}</span>
+                          <input
+                            type="number"
+                            min="0"
+                            max={matchFormData.set3IsTiebreaker ? "10" : "7"}
+                            value={matchFormData.set3Winner}
+                            onChange={(e) => {
+                              const newData = {...matchFormData, set3Winner: e.target.value};
+                              const syncedScores = syncWinnerLoserToTeamScores(
+                                newData.matchWinner,
+                                newData.set1Winner, newData.set1Loser,
+                                newData.set2Winner, newData.set2Loser,
+                                newData.set3Winner, newData.set3Loser
+                              );
+                              setMatchFormData({...newData, ...syncedScores});
+                            }}
+                            className="w-16 px-2 py-2 border-2 border-green-500 rounded text-center font-bold"
+                            placeholder="0"
+                          />
+                          <span className="font-bold">-</span>
+                          <input
+                            type="number"
+                            min="0"
+                            max={matchFormData.set3IsTiebreaker ? "10" : "7"}
+                            value={matchFormData.set3Loser}
+                            onChange={(e) => {
+                              const newData = {...matchFormData, set3Loser: e.target.value};
+                              const syncedScores = syncWinnerLoserToTeamScores(
+                                newData.matchWinner,
+                                newData.set1Winner, newData.set1Loser,
+                                newData.set2Winner, newData.set2Loser,
+                                newData.set3Winner, newData.set3Loser
+                              );
+                              setMatchFormData({...newData, ...syncedScores});
+                            }}
+                            className="w-16 px-2 py-2 border-2 border-gray-300 rounded text-center"
+                            placeholder="0"
+                          />
+                          <span className="text-xs font-semibold text-gray-600 w-24">{loserName}</span>
+                        </div>
+                        {(matchFormData.set3Winner || matchFormData.set3Loser) && (
+                          <>
+                            <label className="flex items-center gap-2 mt-2 text-sm">
+                              <input
+                                type="checkbox"
+                                checked={matchFormData.set3IsTiebreaker}
+                                onChange={(e) => setMatchFormData({...matchFormData, set3IsTiebreaker: e.target.checked})}
+                                className="w-4 h-4"
+                              />
+                              <span>Set 3 was a 10-point tiebreaker</span>
+                            </label>
+                            {(() => {
+                              const validation = validateTennisScore(matchFormData.set3Winner, matchFormData.set3Loser, matchFormData.set3IsTiebreaker, true);
+                              return !validation.valid && matchFormData.set3Winner && matchFormData.set3Loser && (
+                                <p className="text-xs text-red-600 mt-1">⚠️ {validation.error}</p>
+                              );
+                            })()}
+                          </>
+                        )}
+                      </div>
 
                     {/* Match Result Display */}
                     {getMatchResultsDisplay() && (
                       <div className="mt-4 p-3 bg-white rounded border-2 border-green-500">
                         <p className="text-sm font-semibold text-green-800 mb-1">Match Result:</p>
                         <p className="text-lg font-bold text-green-900">
-                          Winner: {getMatchResultsDisplay().winnerName}
-                        </p>
-                        <p className="text-sm text-gray-700">
-                          {getMatchResultsDisplay().setScores}
+                          Winner: {getMatchResultsDisplay().winnerName} <span className="text-blue-600">{getMatchResultsDisplay().setScores}</span>
                         </p>
                       </div>
                     )}
-                  </div>
+                    </div>
+                    );
+                  })()}
+
+                  {/* Show helper message if winner not selected yet */}
+                  {matchFormData.team1Id && matchFormData.team2Id && !matchFormData.matchWinner && (
+                    <div className="col-span-2 bg-gray-100 border-2 border-gray-300 rounded-lg p-4 text-center">
+                      <p className="text-gray-600 font-semibold">
+                        👆 Please select the match winner above to enter scores
+                      </p>
+                    </div>
+                  )}
+
                   <div className="col-span-2">
                     <label className="block text-sm font-semibold mb-1">Notes (Optional)</label>
                     <textarea
@@ -2409,6 +2852,26 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
           </div>
         </div>
       )}
+
+      {/* Match Results Modal - for entering results for pending matches */}
+      <MatchResultsModal
+        isOpen={showResultsModal}
+        match={selectedPendingMatch ? {
+          team1Id: selectedPendingMatch.challengerTeamId,
+          team2Id: selectedPendingMatch.challengedTeamId,
+          matchId: selectedPendingMatch.matchId,
+          acceptedLevel: selectedPendingMatch.acceptedLevel,
+          proposedLevel: selectedPendingMatch.proposedLevel,
+          acceptedDate: selectedPendingMatch.acceptedDate,
+          challengeId: selectedPendingMatch.challengeId
+        } : null}
+        teams={teams}
+        matches={matches}
+        onSubmit={handleSubmitPendingResults}
+        onClose={handleCloseResultsModal}
+        addLog={addLog}
+        ACTION_TYPES={ACTION_TYPES}
+      />
     </div>
   );
 };

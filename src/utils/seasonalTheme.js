@@ -116,7 +116,7 @@ export const getThemeTextColors = (themeName) => {
 export const getSeasonalMessage = (themeName) => {
   switch (themeName) {
     case 'autumn':
-      return '🍂 Happy Thanksgiving Season!';
+      return '🍂 Happy Thanksgiving!';
     case 'winter':
       return '❄️ Happy Holidays!';
     case 'newyear':
