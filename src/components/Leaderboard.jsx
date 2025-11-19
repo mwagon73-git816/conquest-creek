@@ -171,9 +171,6 @@ const Leaderboard = ({ teams, getLeaderboard, photos, isAuthenticated, onDeleteP
                 <td className="text-center p-2 font-semibold">{team.matchWinPoints}</td>
                 <td className="text-center p-2 text-sm">
                   {formatNTRP(team.cappedBonus)}
-                  {team.bonusPoints > team.cappedBonus && (
-                    <span className="text-red-500 text-xs ml-1">(capped)</span>
-                  )}
                 </td>
                 <td className="text-center p-2 font-bold text-lg text-blue-600">{formatNTRP(team.totalPoints)}</td>
                 <td className="text-center p-2 text-sm text-gray-600">{team.setsWon}</td>
