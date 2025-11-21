@@ -6,12 +6,27 @@ import { tournamentStorage, imageStorage } from '../services/storage';
 import { isSmsEnabled } from '../firebase';
 import { generateMatchId, generateChallengeId } from '../utils/idGenerator';
 import MatchResultsModal from './MatchResultsModal';
+import {
+  MATCH_TYPES,
+  validatePlayerSelection as validatePlayerCount,
+  calculateCombinedNTRP as calcCombinedNTRP,
+  validateCombinedNTRP as validateNTRPLimit,
+  getRequiredPlayerCount,
+  getPlayerSelectionLabel,
+  getPlayerLimitAlert,
+  getPlayerSelectionError,
+  formatMatchType,
+  getMatchType,
+  getLevelOptions,
+  getDefaultLevel
+} from '../utils/matchUtils';
 
 const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange, isAuthenticated, setActiveTab, players, captains, onAddPhoto, loginName, userRole, userTeamId, editingMatch, setEditingMatch, addLog }) => {
   const [showMatchForm, setShowMatchForm] = useState(false);
   const [matchFormData, setMatchFormData] = useState({
+    matchType: MATCH_TYPES.DOUBLES,
     date: new Date().toISOString().split('T')[0],
-    level: '7.0',
+    level: getDefaultLevel(MATCH_TYPES.DOUBLES),
     team1Id: '',
     team2Id: '',
     matchWinner: '', // 'team1' or 'team2' - selected before entering scores
@@ -39,9 +54,10 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
   // Create Pending Match state
   const [showPendingMatchForm, setShowPendingMatchForm] = useState(false);
   const [pendingMatchFormData, setPendingMatchFormData] = useState({
+    matchType: MATCH_TYPES.DOUBLES,
     opponentTeamId: '',
     scheduledDate: new Date().toISOString().split('T')[0],
-    level: '7.0',
+    level: getDefaultLevel(MATCH_TYPES.DOUBLES),
     team1Players: [],
     team2Players: [],
     notes: ''
@@ -69,8 +85,9 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
       const set3Loser = matchWinner === 'team1' ? editingMatch.set3Team2 : editingMatch.set3Team1;
 
       setMatchFormData({
+        matchType: getMatchType(editingMatch),
         date: editingMatch.date || new Date().toISOString().split('T')[0],
-        level: editingMatch.level || '7.0',
+        level: editingMatch.level || getDefaultLevel(getMatchType(editingMatch)),
         team1Id: editingMatch.team1Id ? editingMatch.team1Id.toString() : '',
         team2Id: editingMatch.team2Id ? editingMatch.team2Id.toString() : '',
         matchWinner: matchWinner,
@@ -496,13 +513,8 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
   };
 
   // Calculate combined NTRP for players
-  const calculateCombinedNTRP = (playerIds) => {
-    if (!playerIds || playerIds.length === 0) return 0;
-    const playerRatings = playerIds.map(id => {
-      const player = players.find(p => p.id === id);
-      return player ? parseFloat(player.ntrpRating) : 0;
-    });
-    return playerRatings.reduce((sum, rating) => sum + rating, 0);
+  const calculateCombinedNTRP = (playerIds, matchType = MATCH_TYPES.DOUBLES) => {
+    return calcCombinedNTRP(playerIds, players, matchType);
   };
 
   // Create Pending Match directly (outside challenge system)
@@ -524,22 +536,25 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
     }
 
     // Validate player selection for captain's team
-    if (pendingMatchFormData.team1Players.length !== 2) {
-      alert('⚠️ Please select exactly 2 players from your team.');
+    const matchType = pendingMatchFormData.matchType || MATCH_TYPES.DOUBLES;
+    const requiredCount = getRequiredPlayerCount(matchType);
+
+    if (pendingMatchFormData.team1Players.length !== requiredCount) {
+      alert(getPlayerSelectionError(matchType));
       return;
     }
 
     // Validate NTRP for captain's team
-    const team1CombinedNTRP = calculateCombinedNTRP(pendingMatchFormData.team1Players);
+    const team1CombinedNTRP = calculateCombinedNTRP(pendingMatchFormData.team1Players, matchType);
     const maxNTRP = parseFloat(pendingMatchFormData.level);
     if (team1CombinedNTRP > maxNTRP) {
-      alert(`⚠️ Combined NTRP (${team1CombinedNTRP.toFixed(1)}) exceeds match level (${maxNTRP}). Please select different players.`);
+      alert(`⚠️ ${matchType === MATCH_TYPES.SINGLES ? 'Player rating' : 'Combined NTRP'} (${team1CombinedNTRP.toFixed(1)}) exceeds match level (${maxNTRP}). Please select different players.`);
       return;
     }
 
     // Opponent players are optional at creation - can be added later
-    if (pendingMatchFormData.team2Players.length > 0 && pendingMatchFormData.team2Players.length !== 2) {
-      alert('⚠️ Opponent team must have 0 or 2 players selected.');
+    if (pendingMatchFormData.team2Players.length > 0 && pendingMatchFormData.team2Players.length !== requiredCount) {
+      alert(`⚠️ Opponent team must have 0 or ${requiredCount} player${requiredCount > 1 ? 's' : ''} selected.`);
       return;
     }
 
@@ -558,6 +573,7 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
         id: Date.now(),
         matchId: generatedMatchId, // Primary identifier - Match ID
         challengeId: generatedChallengeId, // Secondary identifier for tracking
+        matchType: matchType,
         challengerTeamId: userTeamId, // Captain's team
         challengedTeamId: parseInt(pendingMatchFormData.opponentTeamId),
         status: 'accepted', // Goes directly to pending status
@@ -569,8 +585,8 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
         challengerPlayers: pendingMatchFormData.team1Players,
         challengedPlayers: pendingMatchFormData.team2Players,
         combinedNTRP: team1CombinedNTRP,
-        challengedCombinedNTRP: pendingMatchFormData.team2Players.length === 2
-          ? calculateCombinedNTRP(pendingMatchFormData.team2Players)
+        challengedCombinedNTRP: pendingMatchFormData.team2Players.length === requiredCount
+          ? calculateCombinedNTRP(pendingMatchFormData.team2Players, matchType)
           : 0,
         notes: pendingMatchFormData.notes.trim(),
         createdBy: getUserInfo()?.name || 'Unknown',
@@ -671,9 +687,10 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
 
       // Reset form and close
       setPendingMatchFormData({
+        matchType: MATCH_TYPES.DOUBLES,
         opponentTeamId: '',
         scheduledDate: new Date().toISOString().split('T')[0],
-        level: '7.0',
+        level: getDefaultLevel(MATCH_TYPES.DOUBLES),
         team1Players: [],
         team2Players: [],
         notes: ''
@@ -870,6 +887,7 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
     });
 
     const matchData = {
+      matchType: matchFormData.matchType || MATCH_TYPES.DOUBLES,
       date: matchFormData.date,
       level: matchFormData.level,
       team1Id: parseInt(matchFormData.team1Id),
@@ -1091,8 +1109,9 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
     // Reset form data after modal closes (delay to allow animation)
     setTimeout(() => {
       setMatchFormData({
+        matchType: MATCH_TYPES.DOUBLES,
         date: new Date().toISOString().split('T')[0],
-        level: '7.0',
+        level: getDefaultLevel(MATCH_TYPES.DOUBLES),
         team1Id: '',
         team2Id: '',
         matchWinner: '',
@@ -1120,8 +1139,9 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
     setShowMatchForm(true);
     setEditingMatch(null);
     setMatchFormData({
+      matchType: MATCH_TYPES.DOUBLES,
       date: new Date().toISOString().split('T')[0],
-      level: '7.0',
+      level: getDefaultLevel(MATCH_TYPES.DOUBLES),
       team1Id: userRole === 'captain' && userTeamId ? userTeamId.toString() : '', // Auto-select captain's team
       team2Id: '',
       matchWinner: '',
@@ -1186,13 +1206,20 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
   const handlePlayerToggle = (playerId, teamNumber) => {
     const field = teamNumber === 1 ? 'team1Players' : 'team2Players';
     const currentPlayers = matchFormData[field];
+    const requiredCount = getRequiredPlayerCount(matchFormData.matchType);
 
     if (currentPlayers.includes(playerId)) {
+      // Remove player
       setMatchFormData({
         ...matchFormData,
         [field]: currentPlayers.filter(id => id !== playerId)
       });
     } else {
+      // Add player - check limit based on match type
+      if (currentPlayers.length >= requiredCount) {
+        alert(getPlayerLimitAlert(matchFormData.matchType));
+        return;
+      }
       setMatchFormData({
         ...matchFormData,
         [field]: [...currentPlayers, playerId]
@@ -1253,6 +1280,7 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
     const newMatch = {
       id: Date.now(),
       matchId: matchResult.matchId,
+      matchType: getMatchType(selectedPendingMatch),
       date: matchResult.date,
       level: matchResult.level,
       team1Id,
@@ -1416,9 +1444,10 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
               onClick={() => {
                 setShowPendingMatchForm(false);
                 setPendingMatchFormData({
+                  matchType: MATCH_TYPES.DOUBLES,
                   opponentTeamId: '',
                   scheduledDate: new Date().toISOString().split('T')[0],
-                  level: '7.0',
+                  level: getDefaultLevel(MATCH_TYPES.DOUBLES),
                   team1Players: [],
                   team2Players: [],
                   notes: ''
@@ -1439,6 +1468,25 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
           </div>
 
           <div className="space-y-4">
+            {/* Match Type Selection */}
+            <div>
+              <label className="block text-sm font-semibold mb-1">Match Type *</label>
+              <select
+                value={pendingMatchFormData.matchType}
+                onChange={(e) => setPendingMatchFormData({
+                  ...pendingMatchFormData,
+                  matchType: e.target.value,
+                  level: getDefaultLevel(e.target.value), // Reset level based on new match type
+                  team1Players: [], // Reset player selections when match type changes
+                  team2Players: []
+                })}
+                className="w-full px-3 py-2 border rounded"
+              >
+                <option value={MATCH_TYPES.DOUBLES}>Doubles</option>
+                <option value={MATCH_TYPES.SINGLES}>Singles</option>
+              </select>
+            </div>
+
             {/* Opponent Team Selection */}
             <div>
               <label className="block text-sm font-semibold mb-1">Opponent Team *</label>
@@ -1472,15 +1520,17 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
               </div>
 
               <div>
-                <label className="block text-sm font-semibold mb-1">Match Level *</label>
+                <label className="block text-sm font-semibold mb-1">
+                  Match Level * {pendingMatchFormData.matchType === MATCH_TYPES.SINGLES ? '(Individual NTRP)' : '(Combined NTRP)'}
+                </label>
                 <select
                   value={pendingMatchFormData.level}
                   onChange={(e) => setPendingMatchFormData({ ...pendingMatchFormData, level: e.target.value })}
                   className="w-full px-3 py-2 border rounded"
                 >
-                  <option value="7.0">7.0</option>
-                  <option value="8.0">8.0</option>
-                  <option value="9.0">9.0</option>
+                  {getLevelOptions(pendingMatchFormData.matchType).map(level => (
+                    <option key={level} value={level}>{level}</option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -1488,24 +1538,26 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
             {/* Your Team Players */}
             <div>
               <label className="block text-sm font-semibold mb-2">
-                Your Team Players * (Select 2)
+                Your Team Players * ({getPlayerSelectionLabel(pendingMatchFormData.matchType)})
               </label>
               <div className="max-h-60 overflow-y-auto p-3 border rounded bg-white space-y-1">
-                {players
-                  .filter(p => p.teamId === userTeamId)
-                  .sort((a, b) => `${a.lastName}${a.firstName}`.localeCompare(`${b.lastName}${b.firstName}`))
-                  .map(player => (
-                    <label key={player.id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
-                      <input
-                        type="checkbox"
-                        checked={pendingMatchFormData.team1Players.includes(player.id)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            // Limit to 2 players
-                            if (pendingMatchFormData.team1Players.length >= 2) {
-                              alert('⚠️ You can only select 2 players for doubles.');
-                              return;
-                            }
+                {(() => {
+                  const requiredCount = getRequiredPlayerCount(pendingMatchFormData.matchType);
+                  return players
+                    .filter(p => p.teamId === userTeamId)
+                    .sort((a, b) => `${a.lastName}${a.firstName}`.localeCompare(`${b.lastName}${b.firstName}`))
+                    .map(player => (
+                      <label key={player.id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
+                        <input
+                          type="checkbox"
+                          checked={pendingMatchFormData.team1Players.includes(player.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              // Limit based on match type
+                              if (pendingMatchFormData.team1Players.length >= requiredCount) {
+                                alert(getPlayerLimitAlert(pendingMatchFormData.matchType));
+                                return;
+                              }
                             setPendingMatchFormData({
                               ...pendingMatchFormData,
                               team1Players: [...pendingMatchFormData.team1Players, player.id]
@@ -1526,26 +1578,35 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
                         </span>
                       </span>
                     </label>
-                  ))}
+                  ));
+                })()}
               </div>
               <div className="mt-2 space-y-1">
-                <p className="text-sm text-gray-600">
-                  Selected: {pendingMatchFormData.team1Players.length} / 2 players
-                </p>
-                {pendingMatchFormData.team1Players.length === 2 && (
-                  <div className={`text-sm font-medium ${
-                    calculateCombinedNTRP(pendingMatchFormData.team1Players) <= parseFloat(pendingMatchFormData.level)
-                      ? 'text-green-600'
-                      : 'text-red-600'
-                  }`}>
-                    Combined NTRP: {calculateCombinedNTRP(pendingMatchFormData.team1Players).toFixed(1)}
-                    {calculateCombinedNTRP(pendingMatchFormData.team1Players) > parseFloat(pendingMatchFormData.level) && (
-                      <span className="block text-xs mt-0.5">
-                        ⚠️ Exceeds match level ({pendingMatchFormData.level})
-                      </span>
-                    )}
-                  </div>
-                )}
+                {(() => {
+                  const requiredCount = getRequiredPlayerCount(pendingMatchFormData.matchType);
+                  const matchType = pendingMatchFormData.matchType;
+                  return (
+                    <>
+                      <p className="text-sm text-gray-600">
+                        Selected: {pendingMatchFormData.team1Players.length} / {requiredCount} player{requiredCount > 1 ? 's' : ''}
+                      </p>
+                      {pendingMatchFormData.team1Players.length === requiredCount && (
+                        <div className={`text-sm font-medium ${
+                          calculateCombinedNTRP(pendingMatchFormData.team1Players, matchType) <= parseFloat(pendingMatchFormData.level)
+                            ? 'text-green-600'
+                            : 'text-red-600'
+                        }`}>
+                          {matchType === MATCH_TYPES.SINGLES ? 'Player Rating' : 'Combined NTRP'}: {calculateCombinedNTRP(pendingMatchFormData.team1Players, matchType).toFixed(1)}
+                          {calculateCombinedNTRP(pendingMatchFormData.team1Players, matchType) > parseFloat(pendingMatchFormData.level) && (
+                            <span className="block text-xs mt-0.5">
+                              ⚠️ Exceeds match level ({pendingMatchFormData.level})
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
             </div>
 
@@ -1633,9 +1694,10 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
                 onClick={() => {
                   setShowPendingMatchForm(false);
                   setPendingMatchFormData({
+                    matchType: MATCH_TYPES.DOUBLES,
                     opponentTeamId: '',
                     scheduledDate: new Date().toISOString().split('T')[0],
-                    level: '7.0',
+                    level: getDefaultLevel(MATCH_TYPES.DOUBLES),
                     team1Players: [],
                     team2Players: [],
                     notes: ''
@@ -1855,8 +1917,9 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
                     // Reset form data after modal closes
                     setTimeout(() => {
                       setMatchFormData({
+                        matchType: MATCH_TYPES.DOUBLES,
                         date: new Date().toISOString().split('T')[0],
-                        level: '7.0',
+                        level: getDefaultLevel(MATCH_TYPES.DOUBLES),
                         team1Id: '',
                         team2Id: '',
                         set1Team1: '',
@@ -2377,6 +2440,31 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
               ) : (
                 /* Original form layout for non-pending matches */
                 <div className="grid grid-cols-2 gap-4">
+                  {/* Match Type Selection */}
+                  <div className="col-span-2">
+                    <label className="block text-sm font-semibold mb-1">Match Type *</label>
+                    <select
+                      value={matchFormData.matchType}
+                      onChange={(e) => setMatchFormData({
+                        ...matchFormData,
+                        matchType: e.target.value,
+                        level: getDefaultLevel(e.target.value), // Reset level based on new match type
+                        team1Players: [], // Reset player selections when match type changes
+                        team2Players: []
+                      })}
+                      className="w-full px-3 py-2 border rounded"
+                      disabled={!!editingMatch}
+                    >
+                      <option value={MATCH_TYPES.DOUBLES}>Doubles</option>
+                      <option value={MATCH_TYPES.SINGLES}>Singles</option>
+                    </select>
+                    {editingMatch && (
+                      <p className="text-xs text-gray-600 mt-1">
+                        Match type cannot be changed when editing
+                      </p>
+                    )}
+                  </div>
+
                   <div>
                     <label className="block text-sm font-semibold mb-1">Match Date *</label>
                     <input
@@ -2387,21 +2475,17 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold mb-1">Match Level</label>
+                    <label className="block text-sm font-semibold mb-1">
+                      Match Level {matchFormData.matchType === MATCH_TYPES.SINGLES ? '(Individual NTRP)' : '(Combined NTRP)'}
+                    </label>
                     <select
                       value={matchFormData.level}
                       onChange={(e) => setMatchFormData({...matchFormData, level: e.target.value})}
                       className="w-full px-3 py-2 border rounded"
                     >
-                      <option value="5.0">5.0</option>
-                      <option value="5.5">5.5</option>
-                      <option value="6.0">6.0</option>
-                      <option value="6.5">6.5</option>
-                      <option value="7.0">7.0</option>
-                      <option value="7.5">7.5</option>
-                      <option value="8.0">8.0</option>
-                      <option value="8.5">8.5</option>
-                      <option value="9.0">9.0</option>
+                      {getLevelOptions(matchFormData.matchType).map(level => (
+                        <option key={level} value={level}>{level}</option>
+                      ))}
                     </select>
                   </div>
                   <div>
@@ -2492,7 +2576,7 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
                   {matchFormData.team1Id && team1Players.length > 0 && (
                     <div className="col-span-2 bg-blue-50 border border-blue-200 rounded p-3">
                       <label className="block text-sm font-semibold mb-2">
-                        Team 1 Players (Optional - Select who played)
+                        Team 1 Players (Optional - {getPlayerSelectionLabel(matchFormData.matchType)})
                       </label>
                       <div className="grid grid-cols-2 gap-2">
                         {team1Players.map(player => (
@@ -2509,6 +2593,9 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
                           </label>
                         ))}
                       </div>
+                      <p className="text-xs text-gray-600 mt-2">
+                        Selected: {matchFormData.team1Players.length} / {getRequiredPlayerCount(matchFormData.matchType)} player{getRequiredPlayerCount(matchFormData.matchType) > 1 ? 's' : ''}
+                      </p>
                     </div>
                   )}
 
@@ -2516,7 +2603,7 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
                   {matchFormData.team2Id && team2Players.length > 0 && (
                     <div className="col-span-2 bg-purple-50 border border-purple-200 rounded p-3">
                       <label className="block text-sm font-semibold mb-2">
-                        Team 2 Players (Optional - Select who played)
+                        Team 2 Players (Optional - {getPlayerSelectionLabel(matchFormData.matchType)})
                       </label>
                       <div className="grid grid-cols-2 gap-2">
                         {team2Players.map(player => (
@@ -2533,6 +2620,9 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
                           </label>
                         ))}
                       </div>
+                      <p className="text-xs text-gray-600 mt-2">
+                        Selected: {matchFormData.team2Players.length} / {getRequiredPlayerCount(matchFormData.matchType)} player{getRequiredPlayerCount(matchFormData.matchType) > 1 ? 's' : ''}
+                      </p>
                     </div>
                   )}
 

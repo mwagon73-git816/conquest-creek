@@ -6,12 +6,25 @@ import { generateMatchId } from '../utils/idGenerator';
 import { tournamentStorage } from '../services/storage';
 import TeamLogo from './TeamLogo';
 import MatchResultsModal from './MatchResultsModal';
+import {
+  MATCH_TYPES,
+  validatePlayerSelection as validatePlayerCount,
+  calculateCombinedNTRP as calcCombinedNTRP,
+  validateCombinedNTRP as validateNTRPLimit,
+  getRequiredPlayerCount,
+  getPlayerSelectionLabel,
+  getPlayerLimitAlert,
+  getPlayerSelectionError,
+  formatMatchType,
+  getMatchType
+} from '../utils/matchUtils';
 
 const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTab, players, userRole, userTeamId, setEditingMatch, challenges, onEnterPendingResults, onChallengesChange, addLog }) => {
   const [showFilters, setShowFilters] = useState(false);
   const [selectedTeams, setSelectedTeams] = useState([]);
   const [selectedPlayers, setSelectedPlayers] = useState([]);
   const [matchStatusFilter, setMatchStatusFilter] = useState('all'); // 'all', 'pending', 'completed'
+  const [matchTypeFilter, setMatchTypeFilter] = useState('all'); // 'all', 'singles', 'doubles'
   const [sortOrder, setSortOrder] = useState('newest'); // 'newest' or 'oldest'
 
   // Edit pending match states
@@ -179,24 +192,18 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
   };
 
   // Calculate combined NTRP rating for selected players
-  const calculateCombinedNTRP = (selectedPlayerIds) => {
-    if (selectedPlayerIds.length !== 2) return 0;
-    const player1 = players.find(p => p.id === selectedPlayerIds[0]);
-    const player2 = players.find(p => p.id === selectedPlayerIds[1]);
-    if (!player1 || !player2) return 0;
-    return parseFloat(player1.ntrpRating) + parseFloat(player2.ntrpRating);
+  const calculateCombinedNTRP = (selectedPlayerIds, matchType = MATCH_TYPES.DOUBLES) => {
+    return calcCombinedNTRP(selectedPlayerIds, players, matchType);
   };
 
-  // Validation: exactly 2 players must be selected
-  const validatePlayerSelection = (selectedPlayers) => {
-    return selectedPlayers.length === 2;
+  // Validation: correct number of players must be selected for match type
+  const validatePlayerSelection = (selectedPlayers, matchType = MATCH_TYPES.DOUBLES) => {
+    return validatePlayerCount(selectedPlayers, matchType);
   };
 
   // Validation: combined NTRP doesn't exceed match level
-  const validateCombinedNTRP = (selectedPlayers, matchLevel) => {
-    if (selectedPlayers.length !== 2) return false;
-    const combinedRating = calculateCombinedNTRP(selectedPlayers);
-    return combinedRating <= parseFloat(matchLevel);
+  const validateCombinedNTRP = (selectedPlayers, matchLevel, matchType = MATCH_TYPES.DOUBLES) => {
+    return validateNTRPLimit(selectedPlayers, players, matchLevel, matchType);
   };
 
   // Handle edit pending match
@@ -441,6 +448,12 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
       if (!matchHasSelectedPlayer) return false;
     }
 
+    // Match type filter
+    if (matchTypeFilter !== 'all') {
+      const currentMatchType = getMatchType(match);
+      if (currentMatchType !== matchTypeFilter) return false;
+    }
+
     return true;
   });
 
@@ -474,6 +487,12 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
       if (!challengeHasSelectedPlayer) return false;
     }
 
+    // Match type filter
+    if (matchTypeFilter !== 'all') {
+      const currentMatchType = getMatchType(challenge);
+      if (currentMatchType !== matchTypeFilter) return false;
+    }
+
     return true;
   });
 
@@ -503,8 +522,8 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
         Matches
       </h2>
 
-      {/* Status Filter and Sort Order */}
-      <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+      {/* Status Filter, Match Type Filter, and Sort Order */}
+      <div className="mb-4 grid grid-cols-1 md:grid-cols-3 gap-4">
         <div>
           <label className="block text-sm font-medium mb-2">Filter by Status:</label>
           <select
@@ -515,6 +534,19 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
             <option value="all">All Matches</option>
             <option value="pending">Pending Only</option>
             <option value="completed">Completed Only</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-2">Filter by Match Type:</label>
+          <select
+            value={matchTypeFilter}
+            onChange={(e) => setMatchTypeFilter(e.target.value)}
+            className="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="all">All Types</option>
+            <option value={MATCH_TYPES.SINGLES}>Singles</option>
+            <option value={MATCH_TYPES.DOUBLES}>Doubles</option>
           </select>
         </div>
 
@@ -658,7 +690,7 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
       </div>
 
       {/* Match Count Display */}
-      {hasActiveFilters && (
+      {(hasActiveFilters || matchTypeFilter !== 'all') && (
         <div className="mb-3 px-3 py-2 bg-blue-100 text-blue-800 rounded text-sm font-semibold">
           {showPending && showCompleted && (
             <>Showing {displayedPending} pending + {displayedMatches} completed of {totalPending + totalMatches} total matches</>
@@ -731,6 +763,9 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
                           </h4>
                           <span className="px-2 py-1 bg-orange-200 text-orange-900 text-xs font-medium rounded">
                             Level {challenge.acceptedLevel || challenge.proposedLevel}
+                          </span>
+                          <span className="px-2 py-1 bg-purple-200 text-purple-900 text-xs font-medium rounded">
+                            {formatMatchType(getMatchType(challenge))}
                           </span>
                           <span className="px-2 py-1 bg-yellow-200 text-yellow-900 text-xs font-medium rounded flex items-center gap-1">
                             <Clock className="w-3 h-3" />
@@ -905,6 +940,12 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
                       )}
                       <span className="font-semibold text-blue-600">
                         {formatSetScores(match)}
+                      </span>
+                      <span className="px-2 py-1 bg-gray-200 text-gray-700 text-xs font-medium rounded">
+                        Level {match.level}
+                      </span>
+                      <span className="px-2 py-1 bg-purple-200 text-purple-900 text-xs font-medium rounded">
+                        {formatMatchType(getMatchType(match))}
                       </span>
                     </div>
                     <div className="text-sm text-gray-600">

@@ -6,6 +6,21 @@ import { tournamentStorage } from '../services/storage';
 import { isSmsEnabled } from '../firebase';
 import TeamLogo from './TeamLogo';
 import { generateChallengeId, generateMatchId } from '../utils/idGenerator';
+import {
+  MATCH_TYPES,
+  validatePlayerSelection as validatePlayerCount,
+  calculateCombinedNTRP as calcCombinedNTRP,
+  validateCombinedNTRP as validateNTRPLimit,
+  getRequiredPlayerCount,
+  getPlayerSelectionLabel,
+  getPlayerLimitAlert,
+  getPlayerSelectionError,
+  formatMatchType,
+  getMatchType,
+  getLevelOptions,
+  getDefaultLevel,
+  suggestLevel
+} from '../utils/matchUtils';
 
 export default function ChallengeManagement({
   teams,
@@ -33,11 +48,13 @@ export default function ChallengeManagement({
   const [selectedTeams, setSelectedTeams] = useState([]);
   const [selectedPlayers, setSelectedPlayers] = useState([]);
   const [statusFilter, setStatusFilter] = useState('open'); // 'all', 'open', 'accepted' - defaults to 'open'
+  const [matchTypeFilter, setMatchTypeFilter] = useState('all'); // 'all', 'singles', 'doubles'
   const [sortOrder, setSortOrder] = useState('newest'); // 'newest' or 'oldest'
 
   // Challenge creation form
   const [createFormData, setCreateFormData] = useState({
     challengerTeamId: '', // For directors to select challenging team
+    matchType: MATCH_TYPES.DOUBLES, // 'singles' or 'doubles'
     proposedDate: '',
     proposedLevel: '7.0',
     selectedPlayers: [],
@@ -54,6 +71,7 @@ export default function ChallengeManagement({
 
   // Challenge edit form
   const [editFormData, setEditFormData] = useState({
+    matchType: MATCH_TYPES.DOUBLES, // 'singles' or 'doubles'
     proposedDate: '',
     proposedLevel: '7.0',
     selectedPlayers: [],
@@ -166,6 +184,14 @@ export default function ChallengeManagement({
       });
     }
 
+    // Match type filter
+    if (matchTypeFilter !== 'all') {
+      filteredList = filteredList.filter(challenge => {
+        const challengeMatchType = getMatchType(challenge);
+        return challengeMatchType === matchTypeFilter;
+      });
+    }
+
     // Sort challenges by date
     filteredList.sort((a, b) => {
       const dateA = new Date(a.createdAt || 0);
@@ -187,27 +213,18 @@ export default function ChallengeManagement({
   };
 
   // Calculate combined NTRP rating for selected players
-  const calculateCombinedNTRP = (selectedPlayerIds) => {
-    if (selectedPlayerIds.length !== 2) return 0;
-
-    const player1 = players.find(p => p.id === selectedPlayerIds[0]);
-    const player2 = players.find(p => p.id === selectedPlayerIds[1]);
-
-    if (!player1 || !player2) return 0;
-
-    return parseFloat(player1.ntrpRating) + parseFloat(player2.ntrpRating);
+  const calculateCombinedNTRP = (selectedPlayerIds, matchType) => {
+    return calcCombinedNTRP(selectedPlayerIds, players, matchType);
   };
 
-  // Validation: exactly 2 players must be selected
-  const validatePlayerSelection = (selectedPlayers) => {
-    return selectedPlayers.length === 2;
+  // Validation: correct number of players must be selected for match type
+  const validatePlayerSelection = (selectedPlayers, matchType) => {
+    return validatePlayerCount(selectedPlayers, matchType);
   };
 
   // Validation: combined NTRP doesn't exceed match level
-  const validateCombinedNTRP = (selectedPlayers, matchLevel) => {
-    if (selectedPlayers.length !== 2) return false;
-    const combinedRating = calculateCombinedNTRP(selectedPlayers);
-    return combinedRating <= parseFloat(matchLevel);
+  const validateCombinedNTRP = (selectedPlayers, matchLevel, matchType) => {
+    return validateNTRPLimit(selectedPlayers, players, matchLevel, matchType);
   };
 
   // Send challenge SMS notification
@@ -264,13 +281,13 @@ export default function ChallengeManagement({
 
     // Proposed date is now optional - no validation needed
 
-    if (!validatePlayerSelection(createFormData.selectedPlayers)) {
-      alert('⚠️ Please select exactly 2 players.');
+    if (!validatePlayerSelection(createFormData.selectedPlayers, createFormData.matchType)) {
+      alert(getPlayerSelectionError(createFormData.matchType));
       return;
     }
 
-    if (!validateCombinedNTRP(createFormData.selectedPlayers, createFormData.proposedLevel)) {
-      const combinedRating = calculateCombinedNTRP(createFormData.selectedPlayers);
+    if (!validateCombinedNTRP(createFormData.selectedPlayers, createFormData.proposedLevel, createFormData.matchType)) {
+      const combinedRating = calculateCombinedNTRP(createFormData.selectedPlayers, createFormData.matchType);
       alert(`Combined NTRP rating (${combinedRating.toFixed(1)}) exceeds match level (${createFormData.proposedLevel}). Please select different players or change the match level.`);
       return;
     }
@@ -282,11 +299,12 @@ export default function ChallengeManagement({
       id: Date.now(),
       challengeId: generatedChallengeId,
       challengerTeamId: challengerTeamId,
+      matchType: createFormData.matchType,
       status: 'open',
       proposedDate: createFormData.proposedDate || null,
       proposedLevel: createFormData.proposedLevel,
       challengerPlayers: createFormData.selectedPlayers,
-      combinedNTRP: calculateCombinedNTRP(createFormData.selectedPlayers),
+      combinedNTRP: calculateCombinedNTRP(createFormData.selectedPlayers, createFormData.matchType),
       createdBy: getUserInfo()?.name || 'Unknown',
       createdAt: new Date().toISOString(),
       notes: createFormData.notes
@@ -297,6 +315,7 @@ export default function ChallengeManagement({
     // Reset form
     setCreateFormData({
       challengerTeamId: '',
+      matchType: MATCH_TYPES.DOUBLES,
       proposedDate: '',
       proposedLevel: '7.0',
       selectedPlayers: [],
@@ -319,18 +338,20 @@ export default function ChallengeManagement({
   };
 
   const handleConfirmAccept = async () => {
+    const challengeMatchType = getMatchType(selectedChallenge);
+
     if (!acceptFormData.acceptedDate) {
       alert('⚠️ Please select a match date.');
       return;
     }
 
-    if (!validatePlayerSelection(acceptFormData.selectedPlayers)) {
-      alert('⚠️ Please select exactly 2 players.');
+    if (!validatePlayerSelection(acceptFormData.selectedPlayers, challengeMatchType)) {
+      alert(getPlayerSelectionError(challengeMatchType));
       return;
     }
 
-    if (!validateCombinedNTRP(acceptFormData.selectedPlayers, acceptFormData.acceptedLevel)) {
-      const combinedRating = calculateCombinedNTRP(acceptFormData.selectedPlayers);
+    if (!validateCombinedNTRP(acceptFormData.selectedPlayers, acceptFormData.acceptedLevel, challengeMatchType)) {
+      const combinedRating = calculateCombinedNTRP(acceptFormData.selectedPlayers, challengeMatchType);
       alert(`Combined NTRP rating (${combinedRating.toFixed(1)}) exceeds match level (${acceptFormData.acceptedLevel}). Please select different players or change the match level.`);
       return;
     }
@@ -384,7 +405,7 @@ export default function ChallengeManagement({
           acceptedDate: acceptFormData.acceptedDate,
           acceptedLevel: acceptFormData.acceptedLevel,
           challengedPlayers: acceptFormData.selectedPlayers,
-          challengedCombinedNTRP: calculateCombinedNTRP(acceptFormData.selectedPlayers),
+          challengedCombinedNTRP: calculateCombinedNTRP(acceptFormData.selectedPlayers, challengeMatchType),
           acceptedBy: getUserInfo()?.name || 'Unknown',
           acceptedAt: new Date().toISOString(),
           acceptNotes: acceptFormData.notes
@@ -448,6 +469,7 @@ export default function ChallengeManagement({
   const handleEditChallenge = (challenge) => {
     setEditingChallenge(challenge);
     setEditFormData({
+      matchType: getMatchType(challenge),
       proposedDate: challenge.proposedDate || '',
       proposedLevel: challenge.proposedLevel,
       selectedPlayers: challenge.challengerPlayers,
@@ -458,19 +480,22 @@ export default function ChallengeManagement({
 
   const handleConfirmEdit = () => {
     // Validation
-    if (!validatePlayerSelection(editFormData.selectedPlayers)) {
-      alert('⚠️ Please select exactly 2 players.');
+    if (!validatePlayerSelection(editFormData.selectedPlayers, editFormData.matchType)) {
+      alert(getPlayerSelectionError(editFormData.matchType));
       return;
     }
 
-    if (!validateCombinedNTRP(editFormData.selectedPlayers, editFormData.proposedLevel)) {
-      const combinedRating = calculateCombinedNTRP(editFormData.selectedPlayers);
+    if (!validateCombinedNTRP(editFormData.selectedPlayers, editFormData.proposedLevel, editFormData.matchType)) {
+      const combinedRating = calculateCombinedNTRP(editFormData.selectedPlayers, editFormData.matchType);
       alert(`Combined NTRP rating (${combinedRating.toFixed(1)}) exceeds match level (${editFormData.proposedLevel}). Please select different players or change the match level.`);
       return;
     }
 
     // Track what changed for activity log
     const changes = [];
+    if (editFormData.matchType !== getMatchType(editingChallenge)) {
+      changes.push('match type');
+    }
     if (editFormData.proposedDate !== (editingChallenge.proposedDate || '')) {
       changes.push('date');
     }
@@ -487,10 +512,11 @@ export default function ChallengeManagement({
     // Update challenge
     const updatedChallenge = {
       ...editingChallenge,
+      matchType: editFormData.matchType,
       proposedDate: editFormData.proposedDate || null,
       proposedLevel: editFormData.proposedLevel,
       challengerPlayers: editFormData.selectedPlayers,
-      combinedNTRP: calculateCombinedNTRP(editFormData.selectedPlayers),
+      combinedNTRP: calculateCombinedNTRP(editFormData.selectedPlayers, editFormData.matchType),
       notes: editFormData.notes,
       lastEditedBy: getUserInfo()?.name || 'Unknown',
       lastEditedAt: new Date().toISOString()
@@ -521,6 +547,7 @@ export default function ChallengeManagement({
     setShowEditForm(false);
     setEditingChallenge(null);
     setEditFormData({
+      matchType: MATCH_TYPES.DOUBLES,
       proposedDate: '',
       proposedLevel: '7.0',
       selectedPlayers: [],
@@ -582,7 +609,8 @@ export default function ChallengeManagement({
     return false;
   };
 
-  const levels = ['6.0', '6.5', '7.0', '7.5', '8.0', '8.5', '9.0', '9.5', '10.0'];
+  // Dynamic level options based on match type
+  const getAvailableLevels = (matchType) => getLevelOptions(matchType);
 
   return (
     <div className="space-y-6">
@@ -614,8 +642,8 @@ export default function ChallengeManagement({
 
       {/* Filter Section */}
       <div className="bg-white rounded-lg shadow p-4">
-        {/* Status Filter and Sort Order */}
-        <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Status Filter, Match Type Filter, and Sort Order */}
+        <div className="mb-4 grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
             <label className="block text-sm font-medium mb-2">Filter by Status:</label>
             <select
@@ -626,6 +654,19 @@ export default function ChallengeManagement({
               <option value="all">All Challenges</option>
               <option value="open">Open Only</option>
               <option value="accepted">Accepted Only</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-2">Filter by Match Type:</label>
+            <select
+              value={matchTypeFilter}
+              onChange={(e) => setMatchTypeFilter(e.target.value)}
+              className="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="all">All Types</option>
+              <option value={MATCH_TYPES.SINGLES}>Singles</option>
+              <option value={MATCH_TYPES.DOUBLES}>Doubles</option>
             </select>
           </div>
 
@@ -769,7 +810,7 @@ export default function ChallengeManagement({
         </div>
 
         {/* Challenge Count Display */}
-        {(hasActiveFilters || statusFilter !== 'all') && (
+        {(hasActiveFilters || statusFilter !== 'all' || matchTypeFilter !== 'all') && (
           <div className="mt-3 px-3 py-2 bg-blue-100 text-blue-800 rounded text-sm font-semibold">
             Showing {getFilteredChallenges().length} of {getAllChallenges().length} challenges
           </div>
@@ -824,6 +865,26 @@ export default function ChallengeManagement({
               </div>
             )}
 
+            {/* Match Type */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Match Type *
+              </label>
+              <select
+                value={createFormData.matchType}
+                onChange={(e) => setCreateFormData({
+                  ...createFormData,
+                  matchType: e.target.value,
+                  proposedLevel: getDefaultLevel(e.target.value), // Update level based on match type
+                  selectedPlayers: [] // Reset player selection when match type changes
+                })}
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value={MATCH_TYPES.DOUBLES}>Doubles</option>
+                <option value={MATCH_TYPES.SINGLES}>Singles</option>
+              </select>
+            </div>
+
             {/* Proposed Date */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -840,14 +901,14 @@ export default function ChallengeManagement({
             {/* Level */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Level
+                Level {createFormData.matchType === MATCH_TYPES.SINGLES ? '(Individual NTRP)' : '(Combined NTRP)'}
               </label>
               <select
                 value={createFormData.proposedLevel}
                 onChange={(e) => setCreateFormData({...createFormData, proposedLevel: e.target.value})}
                 className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                {levels.map(level => (
+                {getAvailableLevels(createFormData.matchType).map(level => (
                   <option key={level} value={level}>{level}</option>
                 ))}
               </select>
@@ -856,12 +917,13 @@ export default function ChallengeManagement({
             {/* Player Selection */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Select 2 Players *
+                {getPlayerSelectionLabel(createFormData.matchType)} *
               </label>
               <div className="border border-gray-300 rounded p-4 max-h-48 overflow-y-auto space-y-2">
                 {(() => {
                   const challengerTeamId = userRole === 'captain' ? userTeamId : parseInt(createFormData.challengerTeamId);
                   const roster = challengerTeamId ? getTeamRoster(challengerTeamId) : [];
+                  const requiredCount = getRequiredPlayerCount(createFormData.matchType);
 
                   if (roster.length === 0) {
                     return (
@@ -880,9 +942,9 @@ export default function ChallengeManagement({
                         checked={createFormData.selectedPlayers.includes(player.id)}
                         onChange={(e) => {
                           if (e.target.checked) {
-                            // Limit to 2 players
-                            if (createFormData.selectedPlayers.length >= 2) {
-                              alert('⚠️ You can only select 2 players for doubles.');
+                            // Limit based on match type
+                            if (createFormData.selectedPlayers.length >= requiredCount) {
+                              alert(getPlayerLimitAlert(createFormData.matchType));
                               return;
                             }
                             setCreateFormData({
@@ -910,16 +972,16 @@ export default function ChallengeManagement({
               </div>
               <div className="mt-2 space-y-1">
                 <p className="text-sm text-gray-600">
-                  Selected: {createFormData.selectedPlayers.length} / 2 players
+                  Selected: {createFormData.selectedPlayers.length} / {getRequiredPlayerCount(createFormData.matchType)} player{getRequiredPlayerCount(createFormData.matchType) > 1 ? 's' : ''}
                 </p>
-                {createFormData.selectedPlayers.length === 2 && (
+                {createFormData.selectedPlayers.length === getRequiredPlayerCount(createFormData.matchType) && (
                   <div className={`text-sm font-medium ${
-                    validateCombinedNTRP(createFormData.selectedPlayers, createFormData.proposedLevel)
+                    validateCombinedNTRP(createFormData.selectedPlayers, createFormData.proposedLevel, createFormData.matchType)
                       ? 'text-green-600'
                       : 'text-red-600'
                   }`}>
-                    Combined NTRP: {calculateCombinedNTRP(createFormData.selectedPlayers).toFixed(1)}
-                    {!validateCombinedNTRP(createFormData.selectedPlayers, createFormData.proposedLevel) && (
+                    {createFormData.matchType === MATCH_TYPES.SINGLES ? 'Player Rating' : 'Combined NTRP'}: {calculateCombinedNTRP(createFormData.selectedPlayers, createFormData.matchType).toFixed(1)}
+                    {!validateCombinedNTRP(createFormData.selectedPlayers, createFormData.proposedLevel, createFormData.matchType) && (
                       <span className="block text-xs mt-0.5">
                         ⚠️ Exceeds match level ({createFormData.proposedLevel})
                       </span>
@@ -1021,6 +1083,9 @@ export default function ChallengeManagement({
                       )}
                       <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded">
                         Level {challenge.status === 'accepted' ? challenge.acceptedLevel : challenge.proposedLevel}
+                      </span>
+                      <span className="px-2 py-1 bg-purple-100 text-purple-800 text-xs font-medium rounded">
+                        {formatMatchType(getMatchType(challenge))}
                       </span>
                     </div>
 
@@ -1170,6 +1235,26 @@ export default function ChallengeManagement({
             </div>
 
             <div className="px-6 py-4 space-y-4">
+              {/* Match Type */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Match Type *
+                </label>
+                <select
+                  value={editFormData.matchType}
+                  onChange={(e) => setEditFormData({
+                    ...editFormData,
+                    matchType: e.target.value,
+                    proposedLevel: getDefaultLevel(e.target.value), // Update level based on match type
+                    selectedPlayers: [] // Reset player selection when match type changes
+                  })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value={MATCH_TYPES.DOUBLES}>Doubles</option>
+                  <option value={MATCH_TYPES.SINGLES}>Singles</option>
+                </select>
+              </div>
+
               {/* Proposed Date */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1186,14 +1271,14 @@ export default function ChallengeManagement({
               {/* Level */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Level
+                  Level {editFormData.matchType === MATCH_TYPES.SINGLES ? '(Individual NTRP)' : '(Combined NTRP)'}
                 </label>
                 <select
                   value={editFormData.proposedLevel}
                   onChange={(e) => setEditFormData({...editFormData, proposedLevel: e.target.value})}
                   className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  {levels.map(level => (
+                  {getAvailableLevels(editFormData.matchType).map(level => (
                     <option key={level} value={level}>{level}</option>
                   ))}
                 </select>
@@ -1202,11 +1287,12 @@ export default function ChallengeManagement({
               {/* Player Selection */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Select 2 Players *
+                  {getPlayerSelectionLabel(editFormData.matchType)} *
                 </label>
                 <div className="border border-gray-300 rounded p-4 max-h-48 overflow-y-auto space-y-2">
                   {(() => {
                     const roster = getTeamRoster(editingChallenge.challengerTeamId);
+                    const requiredCount = getRequiredPlayerCount(editFormData.matchType);
 
                     if (roster.length === 0) {
                       return (
@@ -1223,9 +1309,9 @@ export default function ChallengeManagement({
                           checked={editFormData.selectedPlayers.includes(player.id)}
                           onChange={(e) => {
                             if (e.target.checked) {
-                              // Limit to 2 players
-                              if (editFormData.selectedPlayers.length >= 2) {
-                                alert('⚠️ You can only select 2 players for doubles.');
+                              // Limit based on match type
+                              if (editFormData.selectedPlayers.length >= requiredCount) {
+                                alert(getPlayerLimitAlert(editFormData.matchType));
                                 return;
                               }
                               setEditFormData({
@@ -1253,16 +1339,16 @@ export default function ChallengeManagement({
                 </div>
                 <div className="mt-2 space-y-1">
                   <p className="text-sm text-gray-600">
-                    Selected: {editFormData.selectedPlayers.length} / 2 players
+                    Selected: {editFormData.selectedPlayers.length} / {getRequiredPlayerCount(editFormData.matchType)} player{getRequiredPlayerCount(editFormData.matchType) > 1 ? 's' : ''}
                   </p>
-                  {editFormData.selectedPlayers.length === 2 && (
+                  {editFormData.selectedPlayers.length === getRequiredPlayerCount(editFormData.matchType) && (
                     <div className={`text-sm font-medium ${
-                      validateCombinedNTRP(editFormData.selectedPlayers, editFormData.proposedLevel)
+                      validateCombinedNTRP(editFormData.selectedPlayers, editFormData.proposedLevel, editFormData.matchType)
                         ? 'text-green-600'
                         : 'text-red-600'
                     }`}>
-                      Combined NTRP: {calculateCombinedNTRP(editFormData.selectedPlayers).toFixed(1)}
-                      {!validateCombinedNTRP(editFormData.selectedPlayers, editFormData.proposedLevel) && (
+                      {editFormData.matchType === MATCH_TYPES.SINGLES ? 'Player Rating' : 'Combined NTRP'}: {calculateCombinedNTRP(editFormData.selectedPlayers, editFormData.matchType).toFixed(1)}
+                      {!validateCombinedNTRP(editFormData.selectedPlayers, editFormData.proposedLevel, editFormData.matchType) && (
                         <span className="block text-xs mt-0.5">
                           ⚠️ Exceeds match level ({editFormData.proposedLevel})
                         </span>
@@ -1330,6 +1416,16 @@ export default function ChallengeManagement({
             </div>
 
             <div className="px-6 py-4 space-y-4">
+              {/* Match Type Display */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Match Type
+                </label>
+                <div className="text-lg font-semibold text-gray-900 px-3 py-2 bg-gray-50 rounded border border-gray-300">
+                  {formatMatchType(getMatchType(selectedChallenge))}
+                </div>
+              </div>
+
               {/* Match Date */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1362,12 +1458,14 @@ export default function ChallengeManagement({
               {/* Player Selection */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Select 2 Players *
+                  {getPlayerSelectionLabel(getMatchType(selectedChallenge))} *
                 </label>
                 <div className="border border-gray-300 rounded p-4 max-h-48 overflow-y-auto space-y-2">
                   {(() => {
                     const acceptingTeamId = userRole === 'captain' ? userTeamId : selectedChallenge.challengedTeamId;
                     const roster = acceptingTeamId ? getTeamRoster(acceptingTeamId) : [];
+                    const challengeMatchType = getMatchType(selectedChallenge);
+                    const requiredCount = getRequiredPlayerCount(challengeMatchType);
 
                     return roster.map(player => (
                       <label key={player.id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
@@ -1376,9 +1474,9 @@ export default function ChallengeManagement({
                           checked={acceptFormData.selectedPlayers.includes(player.id)}
                           onChange={(e) => {
                             if (e.target.checked) {
-                              // Limit to 2 players
-                              if (acceptFormData.selectedPlayers.length >= 2) {
-                                alert('⚠️ You can only select 2 players for doubles.');
+                              // Limit based on match type
+                              if (acceptFormData.selectedPlayers.length >= requiredCount) {
+                                alert(getPlayerLimitAlert(challengeMatchType));
                                 return;
                               }
                               setAcceptFormData({
@@ -1405,23 +1503,31 @@ export default function ChallengeManagement({
                   })()}
                 </div>
                 <div className="mt-2 space-y-1">
-                  <p className="text-sm text-gray-600">
-                    Selected: {acceptFormData.selectedPlayers.length} / 2 players
-                  </p>
-                  {acceptFormData.selectedPlayers.length === 2 && (
-                    <div className={`text-sm font-medium ${
-                      validateCombinedNTRP(acceptFormData.selectedPlayers, acceptFormData.acceptedLevel)
-                        ? 'text-green-600'
-                        : 'text-red-600'
-                    }`}>
-                      Combined NTRP: {calculateCombinedNTRP(acceptFormData.selectedPlayers).toFixed(1)}
-                      {!validateCombinedNTRP(acceptFormData.selectedPlayers, acceptFormData.acceptedLevel) && (
-                        <span className="block text-xs mt-0.5">
-                          ⚠️ Exceeds match level ({acceptFormData.acceptedLevel})
-                        </span>
-                      )}
-                    </div>
-                  )}
+                  {(() => {
+                    const challengeMatchType = getMatchType(selectedChallenge);
+                    const requiredCount = getRequiredPlayerCount(challengeMatchType);
+                    return (
+                      <>
+                        <p className="text-sm text-gray-600">
+                          Selected: {acceptFormData.selectedPlayers.length} / {requiredCount} player{requiredCount > 1 ? 's' : ''}
+                        </p>
+                        {acceptFormData.selectedPlayers.length === requiredCount && (
+                          <div className={`text-sm font-medium ${
+                            validateCombinedNTRP(acceptFormData.selectedPlayers, acceptFormData.acceptedLevel, challengeMatchType)
+                              ? 'text-green-600'
+                              : 'text-red-600'
+                          }`}>
+                            {challengeMatchType === MATCH_TYPES.SINGLES ? 'Player Rating' : 'Combined NTRP'}: {calculateCombinedNTRP(acceptFormData.selectedPlayers, challengeMatchType).toFixed(1)}
+                            {!validateCombinedNTRP(acceptFormData.selectedPlayers, acceptFormData.acceptedLevel, challengeMatchType) && (
+                              <span className="block text-xs mt-0.5">
+                                ⚠️ Exceeds match level ({acceptFormData.acceptedLevel})
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
 

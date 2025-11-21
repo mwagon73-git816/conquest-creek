@@ -19,6 +19,7 @@ import React, { useState } from 'react';
 import { X, Save } from 'lucide-react';
 import { formatDate } from '../utils/formatters';
 import { generateMatchId } from '../utils/idGenerator';
+import { formatMatchType, getMatchType } from '../utils/matchUtils';
 
 export default function MatchResultsModal({
   isOpen,
@@ -293,6 +294,7 @@ export default function MatchResultsModal({
             <div className="text-sm text-blue-800 space-y-1">
               <p><strong>Match ID:</strong> {match.matchId || 'Pending'}</p>
               <p><strong>Teams:</strong> {team1?.name || 'Team 1'} vs {team2?.name || 'Team 2'}</p>
+              <p><strong>Match Type:</strong> {formatMatchType(getMatchType(match))}</p>
               <p><strong>Level:</strong> {match.acceptedLevel || match.proposedLevel || match.level}</p>
               <p><strong>Scheduled Date:</strong> {formatDate(match.acceptedDate || match.scheduledDate || match.date)}</p>
             </div>
