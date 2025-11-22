@@ -46,6 +46,12 @@ const ChallengePage = ({
 
   useEffect(() => {
     // Find challenge by ID (convert to number since URL params are strings)
+    if (!challenges || !Array.isArray(challenges)) {
+      console.warn('⚠️ Challenges data not loaded yet');
+      setLoading(true);
+      return;
+    }
+
     const id = parseInt(challengeId, 10);
     if (!isNaN(id)) {
       const foundChallenge = challenges.find(c => c.id === id);
@@ -57,6 +63,10 @@ const ChallengePage = ({
   // Get player names
   const getPlayerNames = (playerIds) => {
     if (!playerIds || playerIds.length === 0) return 'Not selected';
+    if (!players || !Array.isArray(players)) {
+      console.warn('⚠️ Players data not available for name lookup');
+      return 'Loading...';
+    }
     return playerIds
       .map(id => {
         const player = players.find(p => p.id === id);
@@ -110,6 +120,29 @@ const ChallengePage = ({
   const handleConfirmAccept = async () => {
     console.log('🎾 Starting challenge acceptance from ChallengePage...');
 
+    // Data validation - check that arrays are loaded
+    console.log('🔍 Data validation check:', {
+      teamsType: typeof teams,
+      teamsIsArray: Array.isArray(teams),
+      teamsLength: teams?.length,
+      playersType: typeof players,
+      playersIsArray: Array.isArray(players),
+      playersLength: players?.length,
+      challengeId: challenge?.id
+    });
+
+    if (!teams || !Array.isArray(teams)) {
+      console.error('❌ Teams data not loaded or invalid');
+      alert('⚠️ Teams data not loaded. Please refresh the page and try again.');
+      return;
+    }
+
+    if (!players || !Array.isArray(players)) {
+      console.error('❌ Players data not loaded or invalid');
+      alert('⚠️ Players data not loaded. Please refresh the page and try again.');
+      return;
+    }
+
     const challengeMatchType = getMatchType(challenge);
 
     // Validation
@@ -123,8 +156,9 @@ const ChallengePage = ({
       return;
     }
 
-    if (!validateCombinedNTRP(acceptFormData.selectedPlayers, acceptFormData.acceptedLevel, challengeMatchType)) {
-      const combinedRating = calculateCombinedNTRP(acceptFormData.selectedPlayers, challengeMatchType);
+    // CRITICAL FIX: Pass players array as second argument
+    if (!validateCombinedNTRP(acceptFormData.selectedPlayers, players, acceptFormData.acceptedLevel, challengeMatchType)) {
+      const combinedRating = calculateCombinedNTRP(acceptFormData.selectedPlayers, players, challengeMatchType);
       alert(`Combined NTRP rating (${combinedRating.toFixed(1)}) exceeds match level (${acceptFormData.acceptedLevel}). Please select different players or change the match level.`);
       return;
     }
@@ -148,7 +182,7 @@ const ChallengePage = ({
           acceptedDate: acceptFormData.acceptedDate,
           acceptedLevel: acceptFormData.acceptedLevel,
           challengedPlayers: acceptFormData.selectedPlayers,
-          challengedCombinedNTRP: calculateCombinedNTRP(acceptFormData.selectedPlayers, challengeMatchType),
+          challengedCombinedNTRP: calculateCombinedNTRP(acceptFormData.selectedPlayers, players, challengeMatchType),
           acceptedBy: loginName || 'Unknown',
           notes: acceptFormData.notes,
           matchId: generatedMatchId
@@ -276,8 +310,8 @@ const ChallengePage = ({
     );
   }
 
-  const challengerTeam = teams.find(t => t.id === challenge.challengerTeamId);
-  const challengedTeam = teams.find(t => t.id === challenge.challengedTeamId);
+  const challengerTeam = teams && Array.isArray(teams) ? teams.find(t => t.id === challenge.challengerTeamId) : null;
+  const challengedTeam = teams && Array.isArray(teams) ? teams.find(t => t.id === challenge.challengedTeamId) : null;
   const matchType = getMatchType(challenge);
 
   return (
