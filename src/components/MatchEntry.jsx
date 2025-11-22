@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Plus, Check, X, Upload, Image as ImageIcon, Clock, AlertCircle, Trash2 } from 'lucide-react';
+import { Calendar, Plus, Check, X, Upload, Image as ImageIcon, Clock, AlertCircle, Trash2, RefreshCw } from 'lucide-react';
 import { ACTION_TYPES } from '../services/activityLogger';
 import { formatNTRP, formatDynamic, formatDate } from '../utils/formatters';
 import { tournamentStorage, imageStorage } from '../services/storage';
@@ -66,6 +66,9 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
   // Match Results Modal state (for entering results for pending matches)
   const [showResultsModal, setShowResultsModal] = useState(false);
   const [selectedPendingMatch, setSelectedPendingMatch] = useState(null);
+
+  // Loading state for save operations
+  const [isSaving, setIsSaving] = useState(false);
 
   // Pre-populate form when editing a match
   useEffect(() => {
@@ -785,6 +788,9 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
       return;
     }
 
+    // Set loading state
+    setIsSaving(true);
+
     // Additional validation for winner-centric scoring
     if (matchFormData.matchWinner && matchFormData.set1Winner && matchFormData.set2Winner) {
       // Determine who won each set
@@ -935,6 +941,7 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
         } else {
           alert(`❌ Error saving match results:\n\n${result.message}\n\nPlease try again.`);
         }
+        setIsSaving(false);
         setShowMatchForm(false);
         setEditingMatch(null);
         return;
@@ -963,6 +970,7 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
     } catch (error) {
       console.error('❌ Error in match results submission:', error);
       alert('❌ Unexpected error saving match results.\n\nPlease refresh the page and try again.');
+      setIsSaving(false);
       setShowMatchForm(false);
       setEditingMatch(null);
       return;
@@ -1060,6 +1068,7 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
     console.log('Don\'t forget to click "Save Data" to persist to Firebase!');
     console.log('==========================');
 
+    setIsSaving(false);
     setShowMatchForm(false);
     setEditingMatch(null);
     setPhotoFile(null);
@@ -2860,10 +2869,20 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
             <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex gap-3 sticky bottom-0">
               <button
                 onClick={handleSaveMatch}
-                className="flex-1 bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 flex items-center justify-center gap-2 font-medium"
+                disabled={isSaving}
+                className="flex-1 bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 flex items-center justify-center gap-2 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <Check className="w-4 h-4" />
-                {editingMatch ? 'Save Match Results' : 'Save Match'}
+                {isSaving ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    Saving Results...
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-4 h-4" />
+                    {editingMatch ? 'Save Match Results' : 'Save Match'}
+                  </>
+                )}
               </button>
               <button
                 onClick={() => {

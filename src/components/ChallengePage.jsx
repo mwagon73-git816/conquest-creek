@@ -1,26 +1,48 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Calendar, Users, Trophy, AlertCircle, ArrowLeft, Check, Clock, Share2 } from 'lucide-react';
+import { Calendar, Users, Trophy, AlertCircle, ArrowLeft, Check, Clock, Share2, X } from 'lucide-react';
 import { formatDate } from '../utils/formatters';
 import TeamLogo from './TeamLogo';
-import { formatMatchType, getMatchType, MATCH_TYPES } from '../utils/matchUtils';
+import {
+  formatMatchType,
+  getMatchType,
+  MATCH_TYPES,
+  validatePlayerSelection,
+  getPlayerSelectionError,
+  calculateCombinedNTRP,
+  validateCombinedNTRP
+} from '../utils/matchUtils';
+import { generateMatchId } from '../utils/idGenerator';
+import { tournamentStorage } from '../services/storage';
 
 const ChallengePage = ({
   challenges,
   teams,
   players,
   captains,
+  matches,
   isAuthenticated,
   userRole,
   userTeamId,
+  loginName,
   onLogin,
-  onAcceptChallenge
+  onChallengesChange,
+  onMatchesChange
 }) => {
   const { challengeId } = useParams();
   const navigate = useNavigate();
   const [challenge, setChallenge] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isAccepting, setIsAccepting] = useState(false);
+
+  // Acceptance form state
+  const [showAcceptForm, setShowAcceptForm] = useState(false);
+  const [acceptFormData, setAcceptFormData] = useState({
+    acceptedDate: '',
+    acceptedLevel: '7.0',
+    selectedPlayers: [],
+    notes: ''
+  });
 
   useEffect(() => {
     // Find challenge by ID (convert to number since URL params are strings)
@@ -69,16 +91,113 @@ const ChallengePage = ({
     onLogin();
   };
 
-  const handleAccept = async () => {
+  const handleAcceptClick = () => {
+    // Open acceptance form with pre-filled data
+    setAcceptFormData({
+      acceptedDate: challenge.proposedDate || new Date().toISOString().split('T')[0],
+      acceptedLevel: challenge.proposedLevel || '7.0',
+      selectedPlayers: [],
+      notes: ''
+    });
+    setShowAcceptForm(true);
+  };
+
+  const handleConfirmAccept = async () => {
+    console.log('🎾 Starting challenge acceptance from ChallengePage...');
+
+    const challengeMatchType = getMatchType(challenge);
+
+    // Validation
+    if (!acceptFormData.acceptedDate) {
+      alert('⚠️ Please select a match date.');
+      return;
+    }
+
+    if (!validatePlayerSelection(acceptFormData.selectedPlayers, challengeMatchType)) {
+      alert(getPlayerSelectionError(challengeMatchType));
+      return;
+    }
+
+    if (!validateCombinedNTRP(acceptFormData.selectedPlayers, acceptFormData.acceptedLevel, challengeMatchType)) {
+      const combinedRating = calculateCombinedNTRP(acceptFormData.selectedPlayers, challengeMatchType);
+      alert(`Combined NTRP rating (${combinedRating.toFixed(1)}) exceeds match level (${acceptFormData.acceptedLevel}). Please select different players or change the match level.`);
+      return;
+    }
+
     setIsAccepting(true);
+
     try {
-      await onAcceptChallenge(challenge);
-      // Redirect will happen in parent component after successful acceptance
+      // Determine the challenged team
+      const challengedTeamId = userRole === 'captain' ? userTeamId : challenge.challengedTeamId;
+
+      // Generate Match ID
+      const generatedMatchId = generateMatchId(matches || []);
+      console.log('🆔 Generated Match ID:', generatedMatchId);
+
+      // Call Firestore transaction to accept challenge
+      console.log('🔐 Calling acceptChallengeTransaction...');
+      const result = await tournamentStorage.acceptChallengeTransaction(
+        challenge.id,
+        {
+          challengedTeamId: challengedTeamId,
+          acceptedDate: acceptFormData.acceptedDate,
+          acceptedLevel: acceptFormData.acceptedLevel,
+          challengedPlayers: acceptFormData.selectedPlayers,
+          challengedCombinedNTRP: calculateCombinedNTRP(acceptFormData.selectedPlayers, challengeMatchType),
+          acceptedBy: loginName || 'Unknown',
+          notes: acceptFormData.notes,
+          matchId: generatedMatchId
+        }
+      );
+
+      console.log('📊 Transaction result:', result);
+
+      if (!result.success) {
+        console.error('❌ Transaction failed:', result.message);
+
+        if (result.alreadyAccepted) {
+          alert(`⚠️ Challenge Already Accepted!\n\n${result.message}\n\nRefreshing...`);
+          // Refresh data
+          const latestChallengesData = await tournamentStorage.getChallenges();
+          if (latestChallengesData && onChallengesChange) {
+            onChallengesChange(JSON.parse(latestChallengesData.data));
+          }
+          navigate('/challenges');
+        } else if (result.notFound) {
+          alert(`⚠️ Challenge Not Found!\n\n${result.message}`);
+          navigate('/challenges');
+        } else {
+          alert(`❌ Error accepting challenge:\n\n${result.message}\n\nPlease try again.`);
+        }
+        setIsAccepting(false);
+        setShowAcceptForm(false);
+        return;
+      }
+
+      console.log('✅ Challenge accepted successfully!');
+
+      // Update local state with result
+      if (onChallengesChange) {
+        const updatedChallenges = challenges.map(c =>
+          c.id === challenge.id ? result.updatedChallenge : c
+        );
+        onChallengesChange(updatedChallenges);
+      }
+
+      // Show success message
+      alert('✅ Challenge accepted!\n\nMatch has been created and is now pending results.\n\nThe challenge has been saved automatically.');
+
+      // Wait a moment for user to see the message, then redirect
+      setTimeout(() => {
+        navigate('/matches');
+      }, 500);
+
     } catch (error) {
-      console.error('Error accepting challenge:', error);
-      alert('❌ Failed to accept challenge.\n\nPlease try again or contact support.');
+      console.error('❌ Unexpected error accepting challenge:', error);
+      alert('❌ Unexpected error accepting challenge.\n\nPlease try again or refresh the page.');
     } finally {
       setIsAccepting(false);
+      setShowAcceptForm(false);
     }
   };
 
@@ -375,12 +494,11 @@ const ChallengePage = ({
               {/* Can Accept */}
               {canAccept() && (
                 <button
-                  onClick={handleAccept}
-                  disabled={isAccepting}
-                  className="w-full px-8 py-4 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-bold text-lg flex items-center justify-center gap-3 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={handleAcceptClick}
+                  className="w-full px-8 py-4 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-bold text-lg flex items-center justify-center gap-3 shadow-lg hover:shadow-xl"
                 >
                   <Check className="w-6 h-6" />
-                  {isAccepting ? 'Accepting Challenge...' : 'Accept Challenge'}
+                  Accept Challenge
                 </button>
               )}
 
@@ -420,6 +538,130 @@ const ChallengePage = ({
           </div>
         </div>
       </div>
+
+      {/* Acceptance Form Modal */}
+      {showAcceptForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+              <h3 className="text-xl font-bold text-gray-900">Accept Challenge</h3>
+              <button
+                onClick={() => setShowAcceptForm(false)}
+                disabled={isAccepting}
+                className="text-gray-500 hover:text-gray-700 transition-colors disabled:opacity-50"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* Match Date */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Match Date *
+                </label>
+                <input
+                  type="date"
+                  value={acceptFormData.acceptedDate}
+                  onChange={(e) => setAcceptFormData({ ...acceptFormData, acceptedDate: e.target.value })}
+                  disabled={isAccepting}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100"
+                />
+              </div>
+
+              {/* Match Level */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Match Level *
+                </label>
+                <select
+                  value={acceptFormData.acceptedLevel}
+                  onChange={(e) => setAcceptFormData({ ...acceptFormData, acceptedLevel: e.target.value })}
+                  disabled={isAccepting}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100"
+                >
+                  <option value="6.0">6.0</option>
+                  <option value="7.0">7.0</option>
+                  <option value="8.0">8.0</option>
+                  <option value="9.0">9.0</option>
+                </select>
+              </div>
+
+              {/* Player Selection */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Select Your Players * ({getMatchType(challenge) === MATCH_TYPES.SINGLES ? '1 player' : '2 players'})
+                </label>
+                <div className="space-y-2 max-h-64 overflow-y-auto border border-gray-200 rounded-lg p-3">
+                  {players
+                    .filter(p => p.teamId === userTeamId)
+                    .map(player => (
+                      <label
+                        key={player.id}
+                        className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={acceptFormData.selectedPlayers.includes(player.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setAcceptFormData({
+                                ...acceptFormData,
+                                selectedPlayers: [...acceptFormData.selectedPlayers, player.id]
+                              });
+                            } else {
+                              setAcceptFormData({
+                                ...acceptFormData,
+                                selectedPlayers: acceptFormData.selectedPlayers.filter(id => id !== player.id)
+                              });
+                            }
+                          }}
+                          disabled={isAccepting}
+                          className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        />
+                        <span className="text-sm text-gray-900">
+                          {player.firstName} {player.lastName} (NTRP: {player.ntrp})
+                        </span>
+                      </label>
+                    ))}
+                </div>
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Notes (Optional)
+                </label>
+                <textarea
+                  value={acceptFormData.notes}
+                  onChange={(e) => setAcceptFormData({ ...acceptFormData, notes: e.target.value })}
+                  disabled={isAccepting}
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100"
+                  placeholder="Add any notes about this match..."
+                />
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t border-gray-200 flex gap-3 sticky bottom-0 bg-white">
+              <button
+                onClick={handleConfirmAccept}
+                disabled={isAccepting}
+                className="flex-1 bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors font-bold text-lg disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isAccepting ? 'Accepting Challenge...' : 'Confirm Accept'}
+              </button>
+              <button
+                onClick={() => setShowAcceptForm(false)}
+                disabled={isAccepting}
+                className="px-6 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

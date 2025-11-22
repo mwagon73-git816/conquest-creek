@@ -81,6 +81,11 @@ export default function ChallengeManagement({
     notes: ''
   });
 
+  // Loading states for save operations
+  const [isAccepting, setIsAccepting] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
   // Get user's team
   const userTeam = teams.find(t => t.id === userTeamId);
 
@@ -374,6 +379,9 @@ export default function ChallengeManagement({
       return;
     }
 
+    // Set loading state
+    setIsAccepting(true);
+
     // Determine the challenged team
     const challengedTeamId = userRole === 'captain' ? userTeamId : selectedChallenge.challengedTeamId;
 
@@ -419,6 +427,7 @@ export default function ChallengeManagement({
         } else {
           alert(`❌ Error accepting challenge:\n\n${result.message}\n\nPlease try again.`);
         }
+        setIsAccepting(false);
         setShowAcceptForm(false);
         return;
       }
@@ -470,6 +479,8 @@ export default function ChallengeManagement({
     } catch (error) {
       console.error('❌ Error in challenge acceptance:', error);
       alert('❌ Unexpected error accepting challenge.\n\nPlease refresh the page and try again.');
+    } finally {
+      setIsAccepting(false);
       setShowAcceptForm(false);
     }
   };
@@ -1616,16 +1627,18 @@ export default function ChallengeManagement({
             <div className="px-6 py-4 border-t border-gray-200 flex gap-3">
               <button
                 onClick={handleConfirmAccept}
-                className="flex-1 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition-colors font-medium"
+                disabled={isAccepting}
+                className="flex-1 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Confirm Accept
+                {isAccepting ? 'Accepting Challenge...' : 'Confirm Accept'}
               </button>
               <button
                 onClick={() => {
                   setShowAcceptForm(false);
                   setSelectedChallenge(null);
                 }}
-                className="px-4 py-2 border border-gray-300 rounded hover:bg-gray-50 transition-colors"
+                disabled={isAccepting}
+                className="px-4 py-2 border border-gray-300 rounded hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Cancel
               </button>

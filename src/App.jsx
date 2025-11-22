@@ -1123,11 +1123,14 @@ const App = () => {
               teams={teams}
               players={players}
               captains={captains}
+              matches={matches}
               isAuthenticated={isAuthenticated}
               userRole={userRole}
               userTeamId={userTeamId}
+              loginName={loginName}
               onLogin={() => setShowLogin(true)}
-              onAcceptChallenge={handleChallengePageAccept}
+              onChallengesChange={setChallenges}
+              onMatchesChange={setMatches}
             />
           }
         />
