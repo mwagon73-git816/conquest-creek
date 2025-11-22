@@ -826,50 +826,6 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
     // Determine if this is a pending match or a regular edit
     const isPendingMatch = editingMatch && editingMatch.isPendingMatch;
 
-    // RACE CONDITION PROTECTION: For pending matches, verify challenge is still accepted
-    if (isPendingMatch) {
-      try {
-        console.log('🔍 Verifying pending match challenge status...');
-        const latestChallengesData = await tournamentStorage.getChallenges();
-
-        if (latestChallengesData) {
-          const latestChallenges = JSON.parse(latestChallengesData.data);
-          const latestChallenge = latestChallenges.find(c => c.id === editingMatch.id);
-
-          // Check if challenge still exists
-          if (!latestChallenge) {
-            alert('⚠️ Challenge Not Found!\n\nThis pending match challenge has been deleted by another user.\n\nPlease refresh the page to see current pending matches.');
-            setShowMatchForm(false);
-            setEditingMatch(null);
-            return;
-          }
-
-          // Check if challenge has already been completed
-          if (latestChallenge.status === 'completed') {
-            const completedBy = latestChallenge.completedBy || 'another captain';
-            alert(`⚠️ Match Already Entered!\n\nThis match has already been entered by ${completedBy}.\n\nPlease refresh the page to see current pending matches.`);
-            setShowMatchForm(false);
-            setEditingMatch(null);
-            return;
-          }
-
-          // Check if challenge is no longer accepted (reverted to open)
-          if (latestChallenge.status !== 'accepted') {
-            alert(`⚠️ Challenge Status Changed!\n\nThis challenge is no longer accepted (status: ${latestChallenge.status}).\n\nPlease refresh the page to see current challenges.`);
-            setShowMatchForm(false);
-            setEditingMatch(null);
-            return;
-          }
-
-          console.log('✅ Challenge is still accepted, proceeding with match entry');
-        }
-      } catch (error) {
-        console.error('Error checking challenge status:', error);
-        alert('⚠️ Error verifying challenge status.\n\nPlease try again or refresh the page.');
-        return;
-      }
-    }
-
     // For pending matches, generate a NEW match ID. For edits, use existing ID.
     const matchId = (editingMatch && !isPendingMatch) ? editingMatch.id : Date.now();
 
@@ -933,34 +889,83 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
     console.log('Match Data to Save:', matchData);
     console.log('=======================');
 
-    // For pending matches or new matches, ADD to array. For edits, UPDATE existing.
-    if (editingMatch && !isPendingMatch) {
-      // This is editing an existing match
-      console.log('📝 Updating existing match with ID:', editingMatch.id);
-      setMatches(matches.map(m =>
-        m.id === editingMatch.id
-          ? {...m, ...matchData}
-          : m
-      ));
-    } else {
-      // This is a new match (either from "Add Match" or from pending challenge)
-      console.log('➕ Creating new match with ID:', matchId);
-      console.log('Current matches count:', matches.length);
-      const newMatch = {
-        id: matchId,
-        ...matchData
-      };
-      console.log('🆔 New Match Object:', {
-        id: newMatch.id,
-        matchId: newMatch.matchId,
-        originChallengeId: newMatch.originChallengeId,
-        timestamp: newMatch.timestamp,
-        hasMatchId: !!newMatch.matchId
-      });
-      const updatedMatches = [...matches, newMatch];
-      setMatches(updatedMatches);
-      console.log('Updated matches count:', updatedMatches.length);
-      console.log('✅ Match added to array');
+    // Create complete match object
+    const newMatch = {
+      id: matchId,
+      ...matchData
+    };
+
+    // Use Firestore transaction to save match results atomically
+    console.log('🔐 Saving match results using Firestore transaction...');
+    try {
+      const result = await tournamentStorage.submitMatchResultsTransaction(
+        newMatch,
+        isPendingMatch,
+        isPendingMatch ? editingMatch.id : null,
+        loginName || 'Unknown'
+      );
+
+      if (!result.success) {
+        // Handle different error types
+        if (result.alreadyCompleted) {
+          alert(`⚠️ Match Already Entered!\n\n${result.message}\n\nRefreshing data...`);
+          // Refresh both challenges and matches from server
+          const [latestChallengesData, latestMatchesData] = await Promise.all([
+            tournamentStorage.getChallenges(),
+            tournamentStorage.getMatches()
+          ]);
+          if (latestChallengesData && onChallengesChange) {
+            onChallengesChange(JSON.parse(latestChallengesData.data));
+          }
+          if (latestMatchesData) {
+            setMatches(JSON.parse(latestMatchesData.data));
+          }
+        } else if (result.notFound) {
+          alert(`⚠️ Challenge Not Found!\n\n${result.message}\n\nRefreshing data...`);
+          const latestChallengesData = await tournamentStorage.getChallenges();
+          if (latestChallengesData && onChallengesChange) {
+            onChallengesChange(JSON.parse(latestChallengesData.data));
+          }
+        } else if (result.statusChanged) {
+          alert(`⚠️ Challenge Status Changed!\n\n${result.message}\n\nRefreshing data...`);
+          const latestChallengesData = await tournamentStorage.getChallenges();
+          if (latestChallengesData && onChallengesChange) {
+            onChallengesChange(JSON.parse(latestChallengesData.data));
+          }
+        } else {
+          alert(`❌ Error saving match results:\n\n${result.message}\n\nPlease try again.`);
+        }
+        setShowMatchForm(false);
+        setEditingMatch(null);
+        return;
+      }
+
+      console.log('✅ Match results saved successfully via transaction!');
+
+      // Update local state with the result from transaction
+      if (editingMatch && !isPendingMatch) {
+        // This was editing an existing match
+        setMatches(matches.map(m =>
+          m.id === editingMatch.id ? newMatch : m
+        ));
+      } else {
+        // This was a new match
+        setMatches([...matches, newMatch]);
+      }
+
+      // Update challenges if this was a pending match
+      if (isPendingMatch && result.updatedChallenge && onChallengesChange) {
+        const updatedChallenges = challenges.map(c =>
+          c.id === editingMatch.id ? result.updatedChallenge : c
+        );
+        onChallengesChange(updatedChallenges);
+      }
+    } catch (error) {
+      console.error('❌ Error in match results submission:', error);
+      alert('❌ Unexpected error saving match results.\n\nPlease refresh the page and try again.');
+      setShowMatchForm(false);
+      setEditingMatch(null);
+      return;
     }
 
     // Handle photo upload if present
@@ -1016,78 +1021,33 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
       }
     }
 
+    // Add to activity log if this was from a pending match
+    if (isPendingMatch && addLog) {
+      const team1Name = teams.find(t => t.id === matchData.team1Id)?.name || 'Team 1';
+      const team2Name = teams.find(t => t.id === matchData.team2Id)?.name || 'Team 2';
+      await addLog(
+        ACTION_TYPES.MATCH_CREATED,
+        {
+          matchId: matchId,
+          teams: `${team1Name} vs ${team2Name}`,
+          fromChallenge: true
+        },
+        matchId
+      );
+    }
+
     // Send email notifications if captain
     // For pending matches being entered, treat as new (not edit)
     const isEditForEmail = editingMatch && !isPendingMatch;
     const emailResult = await sendMatchNotifications(matchData, isEditForEmail);
 
-    // If this was from a pending match (challenge), remove it from challenges array
-    if (isPendingMatch && challenges && onChallengesChange) {
-      console.log('=== REMOVING CHALLENGE AFTER MATCH ENTRY ===');
-      console.log('Before removal - Total challenges:', challenges.length);
-      console.log('Challenge IDs before:', challenges.map(c => ({ id: c.id, status: c.status })));
-      console.log('Challenge to remove ID:', editingMatch.id);
-      console.log('Match ID created:', matchId);
-
-      // OPTION 1: Mark as completed (preserves history)
-      const updatedChallenges = challenges.map(c => {
-        if (c.id === editingMatch.id) {
-          return {
-            ...c,
-            status: 'completed',
-            matchId: matchId,
-            completedAt: new Date().toISOString(),
-            completedBy: loginName || 'Unknown'
-          };
-        }
-        return c;
-      });
-
-      // OPTION 2: Remove entirely (cleaner, no history)
-      // Uncomment this line and comment out the above if you want to remove instead of mark completed
-      // const updatedChallenges = challenges.filter(c => c.id !== editingMatch.id);
-
-      onChallengesChange(updatedChallenges);
-
-      console.log('After update - Total challenges:', updatedChallenges.length);
-      console.log('Challenge IDs after:', updatedChallenges.map(c => ({ id: c.id, status: c.status })));
-      console.log('Challenge removed from pending?', !updatedChallenges.find(c => c.id === editingMatch.id && c.status === 'accepted'));
-      console.log('✅ Challenge marked as completed');
-      console.log('==========================================');
-
-      // Add to activity log if available
-      if (addLog) {
-        const team1Name = teams.find(t => t.id === matchData.team1Id)?.name || 'Team 1';
-        const team2Name = teams.find(t => t.id === matchData.team2Id)?.name || 'Team 2';
-        await addLog(
-          ACTION_TYPES.MATCH_CREATED,
-          {
-            matchId: matchId,
-            teams: `${team1Name} vs ${team2Name}`,
-            fromChallenge: true
-          },
-          matchId
-        );
-      }
-    }
-
-    // Show appropriate success message with SAVE DATA reminder
+    // Show appropriate success message
     if (isPendingMatch) {
-      alert(
-        '✅ Match results saved successfully!\n\n' +
-        '⚠️ IMPORTANT: Click the "Save Data" button to save this to the database.\n\n' +
-        'Your changes will be lost if you close the browser without saving.'
-      );
+      alert('✅ Match results saved successfully!\n\nThe results have been saved to the database automatically.');
     } else if (userRole === 'captain' && emailResult.message) {
-      alert(
-        emailResult.message + '\n\n' +
-        '⚠️ IMPORTANT: Click the "Save Data" button to save this to the database.'
-      );
+      alert(emailResult.message + '\n\nThe match has been saved to the database automatically.');
     } else if (!editingMatch) {
-      alert(
-        '✅ Match saved successfully!\n\n' +
-        '⚠️ IMPORTANT: Click the "Save Data" button to save this to the database.'
-      );
+      alert('✅ Match saved successfully!\n\nThe match has been saved to the database automatically.');
     }
 
     // Final verification

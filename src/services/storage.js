@@ -330,6 +330,167 @@ export const tournamentStorage = {
     }
   },
 
+  /**
+   * Submit match results using Firestore transaction to prevent race conditions
+   * @param {object} matchData - Complete match data including results
+   * @param {boolean} isPendingMatch - Whether this is from an accepted challenge
+   * @param {number} challengeId - Challenge ID if this is a pending match
+   * @param {string} submittedBy - Name of captain submitting results
+   * @returns {Promise<object>} Result object with success status and message
+   */
+  async submitMatchResultsTransaction(matchData, isPendingMatch, challengeId, submittedBy) {
+    try {
+      const result = await runTransaction(db, async (transaction) => {
+        const matchesRef = doc(db, COLLECTIONS.MATCHES, 'data');
+
+        // If this is from a pending match, also check/update the challenge
+        if (isPendingMatch && challengeId) {
+          const challengesRef = doc(db, COLLECTIONS.CHALLENGES, 'data');
+
+          // Read both documents
+          const [matchesDoc, challengesDoc] = await Promise.all([
+            transaction.get(matchesRef),
+            transaction.get(challengesRef)
+          ]);
+
+          if (!challengesDoc.exists()) {
+            throw new Error('Challenges data not found');
+          }
+
+          const challengesData = challengesDoc.data();
+          const challenges = JSON.parse(challengesData.data);
+
+          // Find the challenge
+          const challengeIndex = challenges.findIndex(c => c.id === challengeId);
+          if (challengeIndex === -1) {
+            throw new Error('Challenge not found. It may have been deleted.');
+          }
+
+          const challenge = challenges[challengeIndex];
+
+          // Check if results already entered
+          if (challenge.status === 'completed') {
+            const completedBy = challenge.completedBy || 'another captain';
+            throw new Error(`Match results have already been entered by ${completedBy}`);
+          }
+
+          // Check if challenge is still accepted
+          if (challenge.status !== 'accepted') {
+            throw new Error(`Challenge is no longer accepted (status: ${challenge.status})`);
+          }
+
+          // Update challenge to completed
+          challenges[challengeIndex] = {
+            ...challenge,
+            status: 'completed',
+            matchId: matchData.id,
+            completedAt: new Date().toISOString(),
+            completedBy: submittedBy
+          };
+
+          // Write updated challenges
+          const challengesVersion = new Date().toISOString();
+          transaction.update(challengesRef, {
+            data: JSON.stringify(challenges),
+            updatedAt: challengesVersion
+          });
+
+          // Get/update matches
+          let matches = [];
+          if (matchesDoc.exists()) {
+            const matchesData = matchesDoc.data();
+            matches = JSON.parse(matchesData.data);
+          }
+
+          // Add new match
+          matches.push(matchData);
+
+          // Write updated matches
+          const matchesVersion = new Date().toISOString();
+          transaction.update(matchesRef, {
+            data: JSON.stringify(matches),
+            updatedAt: matchesVersion
+          });
+
+          return {
+            success: true,
+            message: 'Match results saved successfully!',
+            updatedChallenge: challenges[challengeIndex],
+            matchesVersion,
+            challengesVersion
+          };
+        } else {
+          // Regular match entry (not from challenge) or match edit
+          const matchesDoc = await transaction.get(matchesRef);
+
+          let matches = [];
+          if (matchesDoc.exists()) {
+            const matchesData = matchesDoc.data();
+            matches = JSON.parse(matchesData.data);
+          }
+
+          // Check if this is an edit (match ID already exists)
+          const existingMatchIndex = matches.findIndex(m => m.id === matchData.id);
+
+          if (existingMatchIndex !== -1) {
+            // Update existing match
+            matches[existingMatchIndex] = matchData;
+          } else {
+            // Add new match
+            matches.push(matchData);
+          }
+
+          // Write updated matches
+          const version = new Date().toISOString();
+          transaction.update(matchesRef, {
+            data: JSON.stringify(matches),
+            updatedAt: version
+          });
+
+          return {
+            success: true,
+            message: 'Match results saved successfully!',
+            version
+          };
+        }
+      });
+
+      return result;
+    } catch (error) {
+      console.error('❌ Match results transaction failed:', error);
+
+      // Return user-friendly error messages
+      if (error.message.includes('already been entered')) {
+        return {
+          success: false,
+          alreadyCompleted: true,
+          message: error.message
+        };
+      }
+
+      if (error.message.includes('Challenge not found')) {
+        return {
+          success: false,
+          notFound: true,
+          message: error.message
+        };
+      }
+
+      if (error.message.includes('no longer accepted')) {
+        return {
+          success: false,
+          statusChanged: true,
+          message: error.message
+        };
+      }
+
+      return {
+        success: false,
+        message: error.message || 'Failed to save match results. Please try again.'
+      };
+    }
+  },
+
   async resetAll() {
     await storage.delete(COLLECTIONS.TEAMS);
     await storage.delete(COLLECTIONS.MATCHES);
