@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, Check } from 'lucide-react';
 import { tournamentStorage } from './services/storage';
 import { createLogEntry, ACTION_TYPES } from './services/activityLogger';
 import Header from './components/Header';
@@ -18,6 +18,7 @@ import MigrationButton from './components/MigrationButton';
 import TournamentRules from './components/TournamentRules';
 import DataSyncManager from './components/DataSyncManager';
 import ConflictResolutionModal from './components/ConflictResolutionModal';
+import ChallengeView from './components/ChallengeView';
 
 const App = () => {
   const [teams, setTeams] = useState([]);
@@ -40,6 +41,9 @@ const App = () => {
   const [userTeamId, setUserTeamId] = useState(null);
   const [saveStatus, setSaveStatus] = useState('');
   const [editingMatch, setEditingMatch] = useState(null);
+  const [viewingChallengeId, setViewingChallengeId] = useState(null);
+  const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
 
   const [dataVersions, setDataVersions] = useState({});
   const [activeSessions, setActiveSessions] = useState([]);
@@ -503,6 +507,15 @@ const App = () => {
     };
 
     loadData();
+  }, []);
+
+  // Check URL parameters for challenge deep linking
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const challengeId = urlParams.get('challenge');
+    if (challengeId) {
+      setViewingChallengeId(challengeId);
+    }
   }, []);
 
   useEffect(() => {
@@ -1049,6 +1062,33 @@ const App = () => {
     );
   }
 
+  // Challenge view handlers
+  const handleChallengeAccept = (challenge) => {
+    // Close the view modal and switch to challenges tab to handle acceptance
+    setViewingChallengeId(null);
+    setActiveTab('challenges');
+    // TODO: Pass challenge ID to ChallengeManagement to auto-open accept form
+  };
+
+  const handleCloseChallengeView = () => {
+    setViewingChallengeId(null);
+    // Remove challenge parameter from URL
+    const url = new URL(window.location);
+    url.searchParams.delete('challenge');
+    window.history.replaceState({}, '', url);
+  };
+
+  const showToastMessage = (message) => {
+    setToastMessage(message);
+    setShowToast(true);
+    setTimeout(() => setShowToast(false), 3000);
+  };
+
+  // Get viewing challenge data
+  const viewingChallenge = viewingChallengeId
+    ? challenges.find(c => c.id === viewingChallengeId)
+    : null;
+
   return (
     <div className="min-h-screen bg-gray-100 p-4">
       <LoginModal
@@ -1063,6 +1103,30 @@ const App = () => {
         setShowLogin={setShowLogin}
         tournamentDirectors={TOURNAMENT_DIRECTORS}
       />
+
+      {/* Challenge View Modal */}
+      {viewingChallenge && (
+        <ChallengeView
+          challenge={viewingChallenge}
+          teams={teams}
+          players={players}
+          captains={captains}
+          isAuthenticated={isAuthenticated}
+          userRole={userRole}
+          userTeamId={userTeamId}
+          onClose={handleCloseChallengeView}
+          onAccept={handleChallengeAccept}
+          onLogin={() => setShowLogin(true)}
+        />
+      )}
+
+      {/* Toast Notification */}
+      {showToast && (
+        <div className="fixed bottom-4 right-4 bg-green-600 text-white px-6 py-3 rounded-lg shadow-lg z-50 flex items-center gap-2 animate-fade-in">
+          <Check className="w-5 h-5" />
+          {toastMessage}
+        </div>
+      )}
 
       <div className="max-w-7xl mx-auto">
         <Header
@@ -1173,6 +1237,7 @@ const App = () => {
               userTeamId={userTeamId}
               loginName={loginName}
               addLog={addLog}
+              showToast={showToastMessage}
             />
           )}
 

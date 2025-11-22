@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, X, Check, Calendar, Users, Swords, Trophy, Clock, AlertCircle, Trash2, Edit2, Filter, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, X, Check, Calendar, Users, Swords, Trophy, Clock, AlertCircle, Trash2, Edit2, Filter, ChevronDown, ChevronUp, Link2 } from 'lucide-react';
 import { ACTION_TYPES, createLogEntry } from '../services/activityLogger';
 import { formatDate } from '../utils/formatters';
 import { tournamentStorage } from '../services/storage';
@@ -34,7 +34,8 @@ export default function ChallengeManagement({
   userRole,
   userTeamId,
   loginName,
-  addLog
+  addLog,
+  showToast
 }) {
   // Form states
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -609,6 +610,41 @@ export default function ChallengeManagement({
     return false;
   };
 
+  // Copy challenge link to clipboard
+  const handleCopyLink = async (challenge) => {
+    const baseUrl = window.location.origin;
+    const challengeUrl = `${baseUrl}?challenge=${challenge.id}`;
+
+    try {
+      await navigator.clipboard.writeText(challengeUrl);
+      if (showToast) {
+        showToast('Link copied to clipboard! 🎾');
+      } else {
+        alert('Link copied to clipboard!');
+      }
+    } catch (error) {
+      console.error('Failed to copy link:', error);
+      // Fallback for older browsers
+      const textArea = document.createElement('textarea');
+      textArea.value = challengeUrl;
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-9999px';
+      document.body.appendChild(textArea);
+      textArea.select();
+      try {
+        document.execCommand('copy');
+        if (showToast) {
+          showToast('Link copied to clipboard! 🎾');
+        } else {
+          alert('Link copied to clipboard!');
+        }
+      } catch (err) {
+        alert('Failed to copy link. Please copy manually: ' + challengeUrl);
+      }
+      document.body.removeChild(textArea);
+    }
+  };
+
   // Dynamic level options based on match type
   const getAvailableLevels = (matchType) => getLevelOptions(matchType);
 
@@ -1087,6 +1123,15 @@ export default function ChallengeManagement({
                       <span className="px-2 py-1 bg-purple-100 text-purple-800 text-xs font-medium rounded">
                         {formatMatchType(getMatchType(challenge))}
                       </span>
+                      {/* Copy Link Button - Inline with match type */}
+                      <button
+                        onClick={() => handleCopyLink(challenge)}
+                        className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded transition-colors"
+                        title="Copy shareable link for WhatsApp"
+                      >
+                        <Link2 className="w-3 h-3" />
+                        <span className="hidden sm:inline">Copy Link for WhatsApp</span>
+                      </button>
                     </div>
 
                     <div className="space-y-1 text-sm text-gray-600">
@@ -1168,7 +1213,7 @@ export default function ChallengeManagement({
                   </div>
 
                   {/* Action Buttons */}
-                  <div className="ml-4 flex gap-2">
+                  <div className="ml-4 flex gap-2 flex-wrap">
                     {/* Edit button (directors and captains who own the challenge) */}
                     {canEditChallenge(challenge) && (
                       <button
@@ -1442,14 +1487,14 @@ export default function ChallengeManagement({
               {/* Level */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Level
+                  Level {getMatchType(selectedChallenge) === MATCH_TYPES.SINGLES ? '(Individual NTRP)' : '(Combined NTRP)'}
                 </label>
                 <select
                   value={acceptFormData.acceptedLevel}
                   onChange={(e) => setAcceptFormData({...acceptFormData, acceptedLevel: e.target.value})}
                   className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  {levels.map(level => (
+                  {getAvailableLevels(getMatchType(selectedChallenge)).map(level => (
                     <option key={level} value={level}>{level}</option>
                   ))}
                 </select>
