@@ -630,7 +630,7 @@ export default function ChallengeManagement({
   // Copy challenge link to clipboard
   const handleCopyLink = async (challenge) => {
     const baseUrl = window.location.origin;
-    const challengeUrl = `${baseUrl}?challenge=${challenge.id}`;
+    const challengeUrl = `${baseUrl}/challenge/${challenge.id}`;
 
     try {
       await navigator.clipboard.writeText(challengeUrl);

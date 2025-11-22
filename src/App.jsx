@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { RefreshCw, Check } from 'lucide-react';
 import { tournamentStorage } from './services/storage';
 import { createLogEntry, ACTION_TYPES } from './services/activityLogger';
@@ -18,9 +19,12 @@ import MigrationButton from './components/MigrationButton';
 import TournamentRules from './components/TournamentRules';
 import DataSyncManager from './components/DataSyncManager';
 import ConflictResolutionModal from './components/ConflictResolutionModal';
-import ChallengeView from './components/ChallengeView';
+import ChallengePage from './components/ChallengePage';
 
 const App = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
+
   const [teams, setTeams] = useState([]);
   const [matches, setMatches] = useState([]);
   const [bonusEntries, setBonusEntries] = useState([]);
@@ -41,7 +45,6 @@ const App = () => {
   const [userTeamId, setUserTeamId] = useState(null);
   const [saveStatus, setSaveStatus] = useState('');
   const [editingMatch, setEditingMatch] = useState(null);
-  const [viewingChallengeId, setViewingChallengeId] = useState(null);
   const [autoAcceptChallengeId, setAutoAcceptChallengeId] = useState(null);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
@@ -510,25 +513,22 @@ const App = () => {
     loadData();
   }, []);
 
-  // Check URL parameters for challenge deep linking
+  // Post-login redirect handling
   useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const challengeIdParam = urlParams.get('challenge');
-    if (challengeIdParam) {
-      // Convert to number since challenge IDs are stored as numbers
-      const challengeId = parseInt(challengeIdParam, 10);
-      if (!isNaN(challengeId)) {
-        setViewingChallengeId(challengeId);
-      } else {
-        console.error('Invalid challenge ID in URL:', challengeIdParam);
-        alert('⚠️ Invalid Challenge Link\n\nThe challenge link is malformed. Please check the URL and try again.');
-        // Remove invalid parameter from URL
-        const url = new URL(window.location);
-        url.searchParams.delete('challenge');
-        window.history.replaceState({}, '', url);
+    if (isAuthenticated) {
+      const returnTo = sessionStorage.getItem('returnTo');
+      const returnAction = sessionStorage.getItem('returnAction');
+
+      if (returnTo && returnAction === 'accept-challenge') {
+        // Clear the stored values
+        sessionStorage.removeItem('returnTo');
+        sessionStorage.removeItem('returnAction');
+
+        // Redirect to the challenge page
+        navigate(returnTo);
       }
     }
-  }, []);
+  }, [isAuthenticated, navigate]);
 
   useEffect(() => {
     const checkSessionValidity = async () => {
@@ -563,24 +563,6 @@ const App = () => {
     return () => clearInterval(intervalId);
   }, [isAuthenticated]);
 
-  // Show error if challenge not found but ID was provided
-  // This must be here (before any early returns) to maintain hook order
-  useEffect(() => {
-    // Get viewing challenge data
-    const viewingChallenge = viewingChallengeId
-      ? challenges.find(c => c.id === viewingChallengeId)
-      : null;
-
-    if (viewingChallengeId && !loading && challenges.length > 0 && !viewingChallenge) {
-      alert('⚠️ Challenge Not Found\n\nThe challenge you\'re looking for doesn\'t exist or has been deleted.\n\nYou\'ll be redirected to the challenges page.');
-      setViewingChallengeId(null);
-      setActiveTab('challenges');
-      // Remove challenge parameter from URL
-      const url = new URL(window.location);
-      url.searchParams.delete('challenge');
-      window.history.replaceState({}, '', url);
-    }
-  }, [viewingChallengeId, loading, challenges]);
 
   const handleLogin = () => {
     const normalizedUsername = loginName.trim();
@@ -1093,20 +1075,13 @@ const App = () => {
     );
   }
 
-  // Challenge view handlers
-  const handleChallengeAccept = (challenge) => {
-    // Close the view modal and switch to challenges tab to handle acceptance
-    setViewingChallengeId(null);
+  // Challenge acceptance handler for ChallengePage
+  const handleChallengePageAccept = async (challenge) => {
+    // Open login modal (session storage will handle redirect after login)
     setAutoAcceptChallengeId(challenge.id);
-    setActiveTab('challenges');
-  };
-
-  const handleCloseChallengeView = () => {
-    setViewingChallengeId(null);
-    // Remove challenge parameter from URL
-    const url = new URL(window.location);
-    url.searchParams.delete('challenge');
-    window.history.replaceState({}, '', url);
+    navigate('/challenges');
+    // Scroll to top after navigation
+    window.scrollTo(0, 0);
   };
 
   const showToastMessage = (message) => {
@@ -1115,13 +1090,8 @@ const App = () => {
     setTimeout(() => setShowToast(false), 3000);
   };
 
-  // Get viewing challenge data (used in render below)
-  const viewingChallenge = viewingChallengeId
-    ? challenges.find(c => c.id === viewingChallengeId)
-    : null;
-
   return (
-    <div className="min-h-screen bg-gray-100 p-4">
+    <>
       <LoginModal
         showLogin={showLogin}
         loginName={loginName}
@@ -1135,22 +1105,6 @@ const App = () => {
         tournamentDirectors={TOURNAMENT_DIRECTORS}
       />
 
-      {/* Challenge View Modal */}
-      {viewingChallenge && (
-        <ChallengeView
-          challenge={viewingChallenge}
-          teams={teams}
-          players={players}
-          captains={captains}
-          isAuthenticated={isAuthenticated}
-          userRole={userRole}
-          userTeamId={userTeamId}
-          onClose={handleCloseChallengeView}
-          onAccept={handleChallengeAccept}
-          onLogin={() => setShowLogin(true)}
-        />
-      )}
-
       {/* Toast Notification */}
       {showToast && (
         <div className="fixed bottom-4 right-4 bg-green-600 text-white px-6 py-3 rounded-lg shadow-lg z-50 flex items-center gap-2 animate-fade-in">
@@ -1158,6 +1112,31 @@ const App = () => {
           {toastMessage}
         </div>
       )}
+
+      <Routes>
+        {/* Challenge Page Route */}
+        <Route
+          path="/challenge/:challengeId"
+          element={
+            <ChallengePage
+              challenges={challenges}
+              teams={teams}
+              players={players}
+              captains={captains}
+              isAuthenticated={isAuthenticated}
+              userRole={userRole}
+              userTeamId={userTeamId}
+              onLogin={() => setShowLogin(true)}
+              onAcceptChallenge={handleChallengePageAccept}
+            />
+          }
+        />
+
+        {/* Main App Route */}
+        <Route
+          path="*"
+          element={
+            <div className="min-h-screen bg-gray-100 p-4">
 
       <div className="max-w-7xl mx-auto">
         <Header
@@ -1364,6 +1343,10 @@ const App = () => {
         <TournamentRules />
       </div>
     </div>
+          }
+        />
+      </Routes>
+    </>
   );
 };
 
