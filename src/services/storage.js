@@ -1,4 +1,4 @@
-import { doc, getDoc, setDoc, deleteDoc, collection, addDoc, query, orderBy, limit, getDocs } from 'firebase/firestore';
+import { doc, getDoc, setDoc, deleteDoc, collection, addDoc, query, orderBy, limit, getDocs, runTransaction, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadString, getDownloadURL, deleteObject } from 'firebase/storage';
 import { db, storage as firebaseStorage, COLLECTIONS } from '../firebase';
 
@@ -220,6 +220,114 @@ export const tournamentStorage = {
 
   async setChallenges(challenges, expectedVersion = null) {
     return await storage.set(COLLECTIONS.CHALLENGES, challenges, 'data', expectedVersion);
+  },
+
+  /**
+   * Accept a challenge using Firestore transaction to prevent race conditions
+   * @param {number} challengeId - The ID of the challenge to accept
+   * @param {object} acceptanceData - Data for accepting the challenge
+   * @param {string} acceptanceData.challengedTeamId - ID of the team accepting
+   * @param {string} acceptanceData.acceptedDate - Match date
+   * @param {string} acceptanceData.acceptedLevel - Match level
+   * @param {Array} acceptanceData.challengedPlayers - Player IDs
+   * @param {number} acceptanceData.challengedCombinedNTRP - Combined NTRP rating
+   * @param {string} acceptanceData.acceptedBy - Name of captain accepting
+   * @param {string} acceptanceData.notes - Optional notes
+   * @param {string} acceptanceData.matchId - Generated match ID
+   * @returns {Promise<object>} Result object with success status and message
+   */
+  async acceptChallengeTransaction(challengeId, acceptanceData) {
+    try {
+      const result = await runTransaction(db, async (transaction) => {
+        // Read the challenges document
+        const challengesRef = doc(db, COLLECTIONS.CHALLENGES, 'data');
+        const challengesDoc = await transaction.get(challengesRef);
+
+        if (!challengesDoc.exists()) {
+          throw new Error('Challenges data not found');
+        }
+
+        const challengesData = challengesDoc.data();
+        const challenges = JSON.parse(challengesData.data);
+
+        // Find the specific challenge
+        const challengeIndex = challenges.findIndex(c => c.id === challengeId);
+        if (challengeIndex === -1) {
+          throw new Error('Challenge not found');
+        }
+
+        const challenge = challenges[challengeIndex];
+
+        // Check if challenge is still open
+        if (challenge.status === 'accepted') {
+          const acceptedBy = challenge.acceptedBy || 'another team';
+          throw new Error(`This challenge has already been accepted by ${acceptedBy}`);
+        }
+
+        if (challenge.status === 'completed') {
+          throw new Error('This challenge has already been completed');
+        }
+
+        if (challenge.status !== 'open') {
+          throw new Error(`Cannot accept challenge with status: ${challenge.status}`);
+        }
+
+        // Update the challenge
+        challenges[challengeIndex] = {
+          ...challenge,
+          status: 'accepted',
+          challengedTeamId: acceptanceData.challengedTeamId,
+          acceptedDate: acceptanceData.acceptedDate,
+          acceptedLevel: acceptanceData.acceptedLevel,
+          challengedPlayers: acceptanceData.challengedPlayers,
+          challengedCombinedNTRP: acceptanceData.challengedCombinedNTRP,
+          acceptedBy: acceptanceData.acceptedBy,
+          acceptedAt: new Date().toISOString(),
+          acceptNotes: acceptanceData.notes || '',
+          matchId: acceptanceData.matchId
+        };
+
+        // Write back the updated challenges
+        const newVersion = new Date().toISOString();
+        transaction.update(challengesRef, {
+          data: JSON.stringify(challenges),
+          updatedAt: newVersion
+        });
+
+        return {
+          success: true,
+          message: 'Challenge accepted successfully!',
+          updatedChallenge: challenges[challengeIndex],
+          version: newVersion
+        };
+      });
+
+      return result;
+    } catch (error) {
+      console.error('❌ Transaction failed:', error);
+
+      // Return user-friendly error messages
+      if (error.message.includes('already been accepted')) {
+        return {
+          success: false,
+          alreadyAccepted: true,
+          message: error.message
+        };
+      }
+
+      if (error.message.includes('Challenge not found')) {
+        return {
+          success: false,
+          notFound: true,
+          message: 'This challenge no longer exists. It may have been deleted.'
+        };
+      }
+
+      return {
+        success: false,
+        message: error.message || 'Failed to accept challenge. Please try again.'
+      };
+    }
   },
 
   async resetAll() {

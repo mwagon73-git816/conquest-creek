@@ -374,37 +374,6 @@ export default function ChallengeManagement({
       return;
     }
 
-    // RACE CONDITION PROTECTION: Fetch fresh data to verify challenge is still open
-    try {
-      console.log('🔍 Checking if challenge is still available...');
-      const latestChallengesData = await tournamentStorage.getChallenges();
-
-      if (latestChallengesData) {
-        const latestChallenges = JSON.parse(latestChallengesData.data);
-        const latestChallenge = latestChallenges.find(c => c.id === selectedChallenge.id);
-
-        // Check if challenge still exists and is open
-        if (!latestChallenge) {
-          alert('⚠️ Challenge Not Found!\n\nThis challenge has been deleted by another user.\n\nPlease refresh the page to see current challenges.');
-          setShowAcceptForm(false);
-          return;
-        }
-
-        if (latestChallenge.status !== 'open') {
-          const acceptedBy = latestChallenge.acceptedBy || 'another team';
-          alert(`⚠️ Challenge Already Accepted!\n\nThis challenge has already been accepted by ${acceptedBy}.\n\nPlease refresh the page to see current challenges.`);
-          setShowAcceptForm(false);
-          return;
-        }
-
-        console.log('✅ Challenge is still open, proceeding with accept');
-      }
-    } catch (error) {
-      console.error('Error checking challenge status:', error);
-      alert('⚠️ Error verifying challenge status.\n\nPlease try again or refresh the page.');
-      return;
-    }
-
     // Determine the challenged team
     const challengedTeamId = userRole === 'captain' ? userTeamId : selectedChallenge.challengedTeamId;
 
@@ -412,64 +381,97 @@ export default function ChallengeManagement({
     const generatedMatchId = generateMatchId(matches || []);
     console.log('🆔 Generated Match ID for accepted challenge:', generatedMatchId);
 
-    // Update challenge status to accepted and assign Match ID
-    const updatedChallenges = challenges.map(c => {
-      if (c.id === selectedChallenge.id) {
-        return {
-          ...c,
-          status: 'accepted',
-          matchId: generatedMatchId, // Assign Match ID when accepting
+    // Use Firestore transaction to accept challenge (prevents race conditions)
+    console.log('🔐 Accepting challenge using Firestore transaction...');
+    try {
+      const result = await tournamentStorage.acceptChallengeTransaction(
+        selectedChallenge.id,
+        {
           challengedTeamId: challengedTeamId,
           acceptedDate: acceptFormData.acceptedDate,
           acceptedLevel: acceptFormData.acceptedLevel,
           challengedPlayers: acceptFormData.selectedPlayers,
           challengedCombinedNTRP: calculateCombinedNTRP(acceptFormData.selectedPlayers, challengeMatchType),
           acceptedBy: getUserInfo()?.name || 'Unknown',
-          acceptedAt: new Date().toISOString(),
-          acceptNotes: acceptFormData.notes
-        };
-      }
-      return c;
-    });
-
-    onChallengesChange(updatedChallenges);
-
-    // Send SMS notification to challenger captain
-    const challengerTeam = teams.find(t => t.id === selectedChallenge.challengerTeamId);
-    const challengedTeam = teams.find(t => t.id === challengedTeamId);
-    const challengerCaptain = captains.find(c =>
-      c.teamId === selectedChallenge.challengerTeamId &&
-      c.status === 'active'
-    );
-
-    if (challengerCaptain) {
-      sendChallengeSMS(
-        challengerCaptain,
-        challengedTeam,
-        challengerTeam,
-        'challenge_accepted',
-        acceptFormData.acceptedDate,
-        acceptFormData.acceptedLevel
-      ).then(result => {
-        if (result.success) {
-          console.log('Challenge accepted SMS sent successfully');
+          notes: acceptFormData.notes,
+          matchId: generatedMatchId
         }
-      }).catch(error => {
-        console.error('Error sending challenge accepted SMS:', error);
+      );
+
+      if (!result.success) {
+        // Handle different error types
+        if (result.alreadyAccepted) {
+          alert(`⚠️ Challenge Already Accepted!\n\n${result.message}\n\nRefreshing challenges list...`);
+          // Refresh challenges from server
+          const latestChallengesData = await tournamentStorage.getChallenges();
+          if (latestChallengesData) {
+            const latestChallenges = JSON.parse(latestChallengesData.data);
+            onChallengesChange(latestChallenges);
+          }
+        } else if (result.notFound) {
+          alert(`⚠️ Challenge Not Found!\n\n${result.message}\n\nRefreshing challenges list...`);
+          // Refresh challenges from server
+          const latestChallengesData = await tournamentStorage.getChallenges();
+          if (latestChallengesData) {
+            const latestChallenges = JSON.parse(latestChallengesData.data);
+            onChallengesChange(latestChallenges);
+          }
+        } else {
+          alert(`❌ Error accepting challenge:\n\n${result.message}\n\nPlease try again.`);
+        }
+        setShowAcceptForm(false);
+        return;
+      }
+
+      console.log('✅ Challenge accepted successfully via transaction!');
+
+      // Update local state with the result from transaction
+      const updatedChallenges = challenges.map(c =>
+        c.id === selectedChallenge.id ? result.updatedChallenge : c
+      );
+      onChallengesChange(updatedChallenges);
+
+      // Send SMS notification to challenger captain
+      const challengerTeam = teams.find(t => t.id === selectedChallenge.challengerTeamId);
+      const challengedTeam = teams.find(t => t.id === challengedTeamId);
+      const challengerCaptain = captains.find(c =>
+        c.teamId === selectedChallenge.challengerTeamId &&
+        c.status === 'active'
+      );
+
+      if (challengerCaptain) {
+        sendChallengeSMS(
+          challengerCaptain,
+          challengedTeam,
+          challengerTeam,
+          'challenge_accepted',
+          acceptFormData.acceptedDate,
+          acceptFormData.acceptedLevel
+        ).then(smsResult => {
+          if (smsResult.success) {
+            console.log('Challenge accepted SMS sent successfully');
+          }
+        }).catch(error => {
+          console.error('Error sending challenge accepted SMS:', error);
+        });
+      }
+
+      // Reset form
+      setShowAcceptForm(false);
+      setSelectedChallenge(null);
+      setAcceptFormData({
+        acceptedDate: '',
+        acceptedLevel: '7.0',
+        selectedPlayers: [],
+        notes: ''
       });
+
+      alert('✅ Challenge accepted!\n\nThe match is now pending results.\n\nThe challenge has been saved to the database automatically.');
+    } catch (error) {
+      console.error('❌ Error in challenge acceptance:', error);
+      alert('❌ Unexpected error accepting challenge.\n\nPlease refresh the page and try again.');
+      setShowAcceptForm(false);
     }
-
-    // Reset form
-    setShowAcceptForm(false);
-    setSelectedChallenge(null);
-    setAcceptFormData({
-      acceptedDate: '',
-      acceptedLevel: '7.0',
-      selectedPlayers: [],
-      notes: ''
-    });
-
-    alert('✅ Challenge accepted!\n\nThe match is now pending results.\n\n⚠️ IMPORTANT: Click the "Save Data" button to save this to the database.');
   };
 
   // Handle delete challenge (directors only)
