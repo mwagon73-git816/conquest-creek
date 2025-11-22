@@ -39,8 +39,18 @@ const ChallengeView = ({
   const canAccept = () => {
     if (!isAuthenticated) return false;
     if (challenge.status !== 'open') return false;
+
+    // Directors can accept any challenge
     if (userRole === 'director') return true;
-    if (userRole === 'captain' && userTeamId === challenge.challengedTeamId) return true;
+
+    // Captains can accept any open challenge EXCEPT their own
+    if (userRole === 'captain' && userTeamId) {
+      // Can't accept your own team's challenge
+      if (challenge.challengerTeamId === userTeamId) return false;
+      // Can accept any other open challenge
+      return true;
+    }
+
     return false;
   };
 
@@ -125,13 +135,29 @@ const ChallengeView = ({
               {/* Challenged Team */}
               <div className="flex-1 text-center">
                 <div className="flex flex-col items-center gap-2">
-                  <TeamLogo team={challengedTeam} size="lg" showBorder={!!challengedTeam?.logo} />
-                  <div>
-                    <p className="font-bold text-lg text-gray-900">
-                      {challengedTeam?.name || 'Unknown Team'}
-                    </p>
-                    <p className="text-xs text-gray-600 font-semibold">CHALLENGED</p>
-                  </div>
+                  {challengedTeam ? (
+                    <>
+                      <TeamLogo team={challengedTeam} size="lg" showBorder={!!challengedTeam?.logo} />
+                      <div>
+                        <p className="font-bold text-lg text-gray-900">
+                          {challengedTeam.name}
+                        </p>
+                        <p className="text-xs text-gray-600 font-semibold">CHALLENGED</p>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center border-2 border-dashed border-gray-400">
+                        <Users className="w-8 h-8 text-gray-400" />
+                      </div>
+                      <div>
+                        <p className="font-bold text-lg text-gray-600">
+                          Open Challenge
+                        </p>
+                        <p className="text-xs text-gray-500 font-semibold">ANY TEAM CAN ACCEPT</p>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
@@ -259,7 +285,9 @@ const ChallengeView = ({
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-center">
                 <AlertCircle className="w-6 h-6 text-yellow-600 mx-auto mb-2" />
                 <p className="text-sm text-gray-700">
-                  Only the captain of {challengedTeam?.name} can accept this challenge
+                  {userRole === 'captain' && challenge.challengerTeamId === userTeamId
+                    ? "You cannot accept your own team's challenge"
+                    : "Only team captains can accept this challenge"}
                 </p>
               </div>
             )}

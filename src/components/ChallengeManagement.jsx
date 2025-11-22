@@ -35,7 +35,9 @@ export default function ChallengeManagement({
   userTeamId,
   loginName,
   addLog,
-  showToast
+  showToast,
+  autoAcceptChallengeId,
+  onAutoAcceptHandled
 }) {
   // Form states
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -81,6 +83,21 @@ export default function ChallengeManagement({
 
   // Get user's team
   const userTeam = teams.find(t => t.id === userTeamId);
+
+  // Auto-open accept form when coming from deep link
+  useEffect(() => {
+    if (autoAcceptChallengeId && isAuthenticated) {
+      const challenge = challenges.find(c => c.id === autoAcceptChallengeId);
+      if (challenge && challenge.status === 'open') {
+        // Auto-open the accept form
+        handleAcceptChallenge(challenge);
+      }
+      // Mark as handled
+      if (onAutoAcceptHandled) {
+        onAutoAcceptHandled();
+      }
+    }
+  }, [autoAcceptChallengeId, isAuthenticated, challenges]);
 
   // Get current user info
   const getUserInfo = () => {

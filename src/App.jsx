@@ -42,6 +42,7 @@ const App = () => {
   const [saveStatus, setSaveStatus] = useState('');
   const [editingMatch, setEditingMatch] = useState(null);
   const [viewingChallengeId, setViewingChallengeId] = useState(null);
+  const [autoAcceptChallengeId, setAutoAcceptChallengeId] = useState(null);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
 
@@ -512,9 +513,20 @@ const App = () => {
   // Check URL parameters for challenge deep linking
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
-    const challengeId = urlParams.get('challenge');
-    if (challengeId) {
-      setViewingChallengeId(challengeId);
+    const challengeIdParam = urlParams.get('challenge');
+    if (challengeIdParam) {
+      // Convert to number since challenge IDs are stored as numbers
+      const challengeId = parseInt(challengeIdParam, 10);
+      if (!isNaN(challengeId)) {
+        setViewingChallengeId(challengeId);
+      } else {
+        console.error('Invalid challenge ID in URL:', challengeIdParam);
+        alert('⚠️ Invalid Challenge Link\n\nThe challenge link is malformed. Please check the URL and try again.');
+        // Remove invalid parameter from URL
+        const url = new URL(window.location);
+        url.searchParams.delete('challenge');
+        window.history.replaceState({}, '', url);
+      }
     }
   }, []);
 
@@ -550,6 +562,25 @@ const App = () => {
 
     return () => clearInterval(intervalId);
   }, [isAuthenticated]);
+
+  // Show error if challenge not found but ID was provided
+  // This must be here (before any early returns) to maintain hook order
+  useEffect(() => {
+    // Get viewing challenge data
+    const viewingChallenge = viewingChallengeId
+      ? challenges.find(c => c.id === viewingChallengeId)
+      : null;
+
+    if (viewingChallengeId && !loading && challenges.length > 0 && !viewingChallenge) {
+      alert('⚠️ Challenge Not Found\n\nThe challenge you\'re looking for doesn\'t exist or has been deleted.\n\nYou\'ll be redirected to the challenges page.');
+      setViewingChallengeId(null);
+      setActiveTab('challenges');
+      // Remove challenge parameter from URL
+      const url = new URL(window.location);
+      url.searchParams.delete('challenge');
+      window.history.replaceState({}, '', url);
+    }
+  }, [viewingChallengeId, loading, challenges]);
 
   const handleLogin = () => {
     const normalizedUsername = loginName.trim();
@@ -1066,8 +1097,8 @@ const App = () => {
   const handleChallengeAccept = (challenge) => {
     // Close the view modal and switch to challenges tab to handle acceptance
     setViewingChallengeId(null);
+    setAutoAcceptChallengeId(challenge.id);
     setActiveTab('challenges');
-    // TODO: Pass challenge ID to ChallengeManagement to auto-open accept form
   };
 
   const handleCloseChallengeView = () => {
@@ -1084,7 +1115,7 @@ const App = () => {
     setTimeout(() => setShowToast(false), 3000);
   };
 
-  // Get viewing challenge data
+  // Get viewing challenge data (used in render below)
   const viewingChallenge = viewingChallengeId
     ? challenges.find(c => c.id === viewingChallengeId)
     : null;
@@ -1238,6 +1269,8 @@ const App = () => {
               loginName={loginName}
               addLog={addLog}
               showToast={showToastMessage}
+              autoAcceptChallengeId={autoAcceptChallengeId}
+              onAutoAcceptHandled={() => setAutoAcceptChallengeId(null)}
             />
           )}
 
