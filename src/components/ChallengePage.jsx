@@ -10,7 +10,9 @@ import {
   validatePlayerSelection,
   getPlayerSelectionError,
   calculateCombinedNTRP,
-  validateCombinedNTRP
+  validateCombinedNTRP,
+  getLevelOptions,
+  getDefaultLevel
 } from '../utils/matchUtils';
 import { generateMatchId } from '../utils/idGenerator';
 import { tournamentStorage } from '../services/storage';
@@ -106,15 +108,17 @@ const ChallengePage = ({
     console.log('Challenge data:', challenge);
     console.log('User can accept:', canAccept());
 
+    const challengeMatchType = getMatchType(challenge);
+
     // Open acceptance form with pre-filled data
     setAcceptFormData({
       acceptedDate: challenge.proposedDate || new Date().toISOString().split('T')[0],
-      acceptedLevel: challenge.proposedLevel || '7.0',
+      acceptedLevel: challenge.proposedLevel || getDefaultLevel(challengeMatchType),
       selectedPlayers: [],
       notes: ''
     });
     setShowAcceptForm(true);
-    console.log('✅ Acceptance form opened');
+    console.log('✅ Acceptance form opened with match type:', challengeMatchType);
   };
 
   const handleConfirmAccept = async () => {
@@ -586,7 +590,7 @@ const ChallengePage = ({
               {/* Match Level */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Match Level *
+                  Match Level * ({getMatchType(challenge) === MATCH_TYPES.SINGLES ? 'Individual NTRP' : 'Combined NTRP'})
                 </label>
                 <select
                   value={acceptFormData.acceptedLevel}
@@ -594,11 +598,15 @@ const ChallengePage = ({
                   disabled={isAccepting}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100"
                 >
-                  <option value="6.0">6.0</option>
-                  <option value="7.0">7.0</option>
-                  <option value="8.0">8.0</option>
-                  <option value="9.0">9.0</option>
+                  {getLevelOptions(getMatchType(challenge)).map(level => (
+                    <option key={level} value={level}>{level}</option>
+                  ))}
                 </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  {getMatchType(challenge) === MATCH_TYPES.SINGLES
+                    ? 'Based on individual player NTRP rating'
+                    : 'Based on combined NTRP rating of 2 players'}
+                </p>
               </div>
 
               {/* Player Selection */}
