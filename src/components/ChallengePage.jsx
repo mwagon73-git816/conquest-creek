@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Calendar, Users, Trophy, AlertCircle, ArrowLeft, Check, Clock, Share2, X } from 'lucide-react';
+import { Calendar, Users, Trophy, AlertCircle, ArrowLeft, Check, Clock, X } from 'lucide-react';
 import { formatDate } from '../utils/formatters';
 import TeamLogo from './TeamLogo';
 import {
@@ -92,6 +92,10 @@ const ChallengePage = ({
   };
 
   const handleAcceptClick = () => {
+    console.log('🎾 Accept button clicked for challenge:', challenge.id);
+    console.log('Challenge data:', challenge);
+    console.log('User can accept:', canAccept());
+
     // Open acceptance form with pre-filled data
     setAcceptFormData({
       acceptedDate: challenge.proposedDate || new Date().toISOString().split('T')[0],
@@ -100,6 +104,7 @@ const ChallengePage = ({
       notes: ''
     });
     setShowAcceptForm(true);
+    console.log('✅ Acceptance form opened');
   };
 
   const handleConfirmAccept = async () => {
@@ -175,6 +180,7 @@ const ChallengePage = ({
       }
 
       console.log('✅ Challenge accepted successfully!');
+      console.log('📊 Created match:', result.createdMatch);
 
       // Update local state with result
       if (onChallengesChange) {
@@ -184,8 +190,16 @@ const ChallengePage = ({
         onChallengesChange(updatedChallenges);
       }
 
+      // Refresh matches data to include the new pending match
+      if (onMatchesChange) {
+        const latestMatchesData = await tournamentStorage.getMatches();
+        if (latestMatchesData) {
+          onMatchesChange(JSON.parse(latestMatchesData.data));
+        }
+      }
+
       // Show success message
-      alert('✅ Challenge accepted!\n\nMatch has been created and is now pending results.\n\nThe challenge has been saved automatically.');
+      alert(`✅ Challenge Accepted!\n\nMatch ${result.createdMatch?.matchId || ''} has been created with:\n• Level: ${acceptFormData.acceptedLevel}\n• Date: ${acceptFormData.acceptedDate}\n• Players: ${acceptFormData.selectedPlayers.length} selected\n\nThe match is now waiting for results to be entered.`);
 
       // Wait a moment for user to see the message, then redirect
       setTimeout(() => {
@@ -198,31 +212,6 @@ const ChallengePage = ({
     } finally {
       setIsAccepting(false);
       setShowAcceptForm(false);
-    }
-  };
-
-  const handleShare = async () => {
-    const url = window.location.href;
-
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: 'Tennis Challenge',
-          text: `Check out this challenge from ${challenge ? teams.find(t => t.id === challenge.challengerTeamId)?.name : 'a team'}!`,
-          url: url
-        });
-      } catch (error) {
-        // User cancelled or error occurred
-        console.log('Share cancelled or failed:', error);
-      }
-    } else {
-      // Fallback to clipboard
-      try {
-        await navigator.clipboard.writeText(url);
-        alert('✅ Link copied to clipboard!');
-      } catch (error) {
-        alert('📋 Copy this link:\n\n' + url);
-      }
     }
   };
 
@@ -312,16 +301,7 @@ const ChallengePage = ({
         <div className="bg-white rounded-lg shadow-lg overflow-hidden">
           {/* Status Banner */}
           <div className="bg-gradient-to-r from-blue-600 to-purple-600 px-6 py-4 text-white">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              {getStatusBadge()}
-              <button
-                onClick={handleShare}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg transition-colors text-sm font-semibold"
-              >
-                <Share2 className="w-4 h-4" />
-                Share
-              </button>
-            </div>
+            {getStatusBadge()}
           </div>
 
           {/* Challenge Info */}

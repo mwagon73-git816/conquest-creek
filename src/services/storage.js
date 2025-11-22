@@ -239,9 +239,14 @@ export const tournamentStorage = {
   async acceptChallengeTransaction(challengeId, acceptanceData) {
     try {
       const result = await runTransaction(db, async (transaction) => {
-        // Read the challenges document
+        // Read both challenges and matches documents
         const challengesRef = doc(db, COLLECTIONS.CHALLENGES, 'data');
-        const challengesDoc = await transaction.get(challengesRef);
+        const matchesRef = doc(db, COLLECTIONS.MATCHES, 'data');
+
+        const [challengesDoc, matchesDoc] = await Promise.all([
+          transaction.get(challengesRef),
+          transaction.get(matchesRef)
+        ]);
 
         if (!challengesDoc.exists()) {
           throw new Error('Challenges data not found');
@@ -287,17 +292,55 @@ export const tournamentStorage = {
           matchId: acceptanceData.matchId
         };
 
-        // Write back the updated challenges
+        // Create a pending match document
+        const pendingMatch = {
+          id: Date.now(),
+          matchId: acceptanceData.matchId,
+          matchType: challenge.matchType || 'Doubles',
+          date: acceptanceData.acceptedDate,
+          level: acceptanceData.acceptedLevel, // CRITICAL: Level from challenge
+          team1Id: challenge.challengerTeamId,
+          team2Id: acceptanceData.challengedTeamId,
+          team1Players: challenge.challengerPlayers || [], // Challenger's players with NTRP
+          team2Players: acceptanceData.challengedPlayers || [], // Accepting team's players with NTRP
+          status: 'pending', // Waiting for results
+          fromChallenge: true,
+          originChallengeId: challenge.id,
+          scheduledDate: acceptanceData.acceptedDate,
+          timestamp: new Date().toISOString(),
+          notes: acceptanceData.notes || '',
+          // Preserve combined NTRP ratings for validation
+          team1CombinedNTRP: challenge.challengerCombinedNTRP,
+          team2CombinedNTRP: acceptanceData.challengedCombinedNTRP
+        };
+
+        console.log('✅ Creating pending match:', pendingMatch);
+
+        // Add match to matches collection
+        let matches = [];
+        if (matchesDoc.exists()) {
+          const matchesData = matchesDoc.data();
+          matches = JSON.parse(matchesData.data);
+        }
+        matches.push(pendingMatch);
+
+        // Write back both updated documents
         const newVersion = new Date().toISOString();
         transaction.update(challengesRef, {
           data: JSON.stringify(challenges),
           updatedAt: newVersion
         });
 
+        transaction.update(matchesRef, {
+          data: JSON.stringify(matches),
+          updatedAt: newVersion
+        });
+
         return {
           success: true,
-          message: 'Challenge accepted successfully!',
+          message: 'Challenge accepted and match created!',
           updatedChallenge: challenges[challengeIndex],
+          createdMatch: pendingMatch,
           version: newVersion
         };
       });
