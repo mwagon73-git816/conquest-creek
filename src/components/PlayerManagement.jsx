@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { UserPlus, Plus, Edit, Trash2, Check, X, Upload, AlertTriangle, ChevronUp, ChevronDown } from 'lucide-react';
 import Papa from 'papaparse';
 import { ACTION_TYPES } from '../services/activityLogger';
 import { formatNTRP, formatDynamic } from '../utils/formatters';
+import { tournamentStorage } from '../services/storage';
+import { useTimestampValidation, TimestampDisplay } from '../hooks/useTimestampValidation';
 
 const PlayerManagement = ({
   players,
@@ -14,8 +16,12 @@ const PlayerManagement = ({
   userRole,
   getEffectiveRating,
   canAddPlayerToTeam,
-  addLog
+  addLog,
+  playersVersion,
+  savePlayersWithValidation,
+  loginName
 }) => {
+  const playerValidation = useTimestampValidation('player');
   const [showPlayerForm, setShowPlayerForm] = useState(false);
   const [editingPlayer, setEditingPlayer] = useState(null);
   const [playerFormData, setPlayerFormData] = useState({
@@ -42,6 +48,14 @@ const PlayerManagement = ({
   const [showFinalConfirm, setShowFinalConfirm] = useState(false);
   const [sortColumn, setSortColumn] = useState('firstName');
   const [sortDirection, setSortDirection] = useState('asc');
+
+  // Record timestamp when players data is loaded
+  useEffect(() => {
+    if (playersVersion) {
+      playerValidation.recordLoad(playersVersion);
+      console.log('📋 Players loaded with version:', playersVersion);
+    }
+  }, [playersVersion]);
 
   const validateEmail = (email) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -128,11 +142,13 @@ const PlayerManagement = ({
     );
   };
 
-  const handleSavePlayer = () => {
+  const handleSavePlayer = async () => {
     if (!playerFormData.firstName || !playerFormData.lastName) {
       alert('⚠️ First name and last name are required.');
       return;
     }
+
+    console.log('🎾 Saving player with validation...');
 
     // Captain validation
     if (playerFormData.isCaptain) {
@@ -342,6 +358,54 @@ const PlayerManagement = ({
         null,
         newPlayer
       );
+    }
+
+    // Validate and save to Firestore
+    try {
+      console.log('💾 Saving player to Firestore with timestamp validation...');
+      const currentVersion = await tournamentStorage.getDataVersion('teams');
+
+      const shouldProceed = await playerValidation.validateBeforeSave(
+        currentVersion,
+        null,
+        async () => {
+          console.log('🔄 Reloading players due to conflict...');
+          const freshData = await tournamentStorage.getTeams();
+          if (freshData) {
+            const parsed = JSON.parse(freshData.data);
+            setPlayers(parsed.players || []);
+            playerValidation.recordLoad(freshData.updatedAt);
+          }
+          await tournamentStorage.logConflict('player', editingPlayer?.id || 'new', loginName, 'reloaded');
+        }
+      );
+
+      if (!shouldProceed) {
+        console.log('❌ Player save canceled by user');
+        return;
+      }
+
+      // Save players with validation
+      const result = await savePlayersWithValidation(players, playersVersion);
+
+      if (result.conflict) {
+        alert(`⚠️ Conflict: ${result.message}`);
+        await tournamentStorage.logConflict('player', editingPlayer?.id || 'new', loginName, 'conflict');
+        return;
+      }
+
+      if (!result.success) {
+        alert(`❌ Save failed: ${result.message || 'Unknown error'}`);
+        return;
+      }
+
+      // Success!
+      playerValidation.reset(result.version, loginName);
+      console.log('✅ Player saved successfully to Firestore with version:', result.version);
+    } catch (error) {
+      console.error('❌ Error saving player to Firestore:', error);
+      alert('❌ Failed to save player to database. Please try again.');
+      return;
     }
 
     setShowPlayerForm(false);
@@ -755,10 +819,16 @@ const PlayerManagement = ({
   return (
     <div className="bg-white rounded-lg shadow-md p-6">
       <div className="flex justify-between items-center mb-4">
-        <h2 className="text-2xl font-bold flex items-center gap-2">
-          <UserPlus className="w-6 h-6" />
-          Player Management
-        </h2>
+        <div>
+          <h2 className="text-2xl font-bold flex items-center gap-2">
+            <UserPlus className="w-6 h-6" />
+            Player Management
+          </h2>
+          <TimestampDisplay
+            timestamp={playersVersion}
+            className="text-sm text-gray-500 mt-1"
+          />
+        </div>
         {isAuthenticated && !showPlayerForm && !showImportForm && (
           <div className="flex gap-2">
             <button

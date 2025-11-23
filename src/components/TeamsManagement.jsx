@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Users, Plus, Trash2, X, Award, Edit, Check, Upload, Image as ImageIcon } from 'lucide-react';
 import { ACTION_TYPES } from '../services/activityLogger';
 import { formatNTRP, formatDynamic } from '../utils/formatters';
-import { imageStorage } from '../services/storage';
+import { imageStorage, tournamentStorage } from '../services/storage';
 import TeamLogo from './TeamLogo';
 import LogoPreviewModal from './LogoPreviewModal';
+import { useTimestampValidation, TimestampDisplay } from '../hooks/useTimestampValidation';
 
 const TeamsManagement = ({
   teams,
@@ -17,8 +18,12 @@ const TeamsManagement = ({
   userRole,
   calculateTeamRatings,
   getEffectiveRating,
-  addLog
+  addLog,
+  teamsVersion,
+  saveTeamsWithValidation,
+  loginName
 }) => {
+  const teamValidation = useTimestampValidation('team');
   const [showTeamForm, setShowTeamForm] = useState(false);
   const [editingTeam, setEditingTeam] = useState(null);
   const [previewLogo, setPreviewLogo] = useState(null);
@@ -39,6 +44,14 @@ const TeamsManagement = ({
     }
   });
   const [logoPreview, setLogoPreview] = useState(null);
+
+  // Record timestamp when teams data is loaded
+  useEffect(() => {
+    if (teamsVersion) {
+      teamValidation.recordLoad(teamsVersion);
+      console.log('📋 Teams loaded with version:', teamsVersion);
+    }
+  }, [teamsVersion]);
 
   const handleAddNewTeam = () => {
     setShowTeamForm(true);
@@ -221,11 +234,13 @@ const TeamsManagement = ({
     }
   };
 
-  const handleSaveTeam = () => {
+  const handleSaveTeam = async () => {
     if (!teamFormData.name) {
       alert('Team name is required');
       return;
     }
+
+    console.log('🎾 Saving team with validation...');
 
     const selectedCaptainId = teamFormData.captainId ? parseInt(teamFormData.captainId) : null;
 
@@ -334,6 +349,60 @@ const TeamsManagement = ({
       );
     }
 
+    // Validate and save to Firestore
+    try {
+      const currentVersion = await tournamentStorage.getDataVersion('teams');
+
+      const shouldProceed = await teamValidation.validateBeforeSave(
+        currentVersion,
+        null,
+        async () => {
+          // Refresh callback - reload teams data
+          console.log('🔄 Reloading teams due to conflict...');
+          const freshData = await tournamentStorage.getTeams();
+          if (freshData) {
+            const parsed = JSON.parse(freshData.data);
+            setTeams(parsed.teams || []);
+            setPlayers(parsed.players || []);
+            teamValidation.recordLoad(freshData.updatedAt);
+          }
+          await tournamentStorage.logConflict('team', editingTeam?.id || 'new', loginName, 'reloaded');
+        }
+      );
+
+      if (!shouldProceed) {
+        console.log('❌ Team save canceled by user');
+        return;
+      }
+
+      // Get the updated teams array to save
+      const updatedTeams = editingTeam
+        ? teams.map(t => t.id === editingTeam.id ? { ...editingTeam, ...teamData } : t)
+        : [...teams, editingTeam ? { ...editingTeam, ...teamData } : { id: Date.now(), ...teamData }];
+
+      // Save with validation
+      const result = await saveTeamsWithValidation(updatedTeams, players, null, teamsVersion);
+
+      if (result.conflict) {
+        alert(`⚠️ Conflict: ${result.message}`);
+        await tournamentStorage.logConflict('team', editingTeam?.id || 'new', loginName, 'conflict');
+        return;
+      }
+
+      if (!result.success) {
+        alert(`❌ Save failed: ${result.message}`);
+        return;
+      }
+
+      // Success!
+      teamValidation.reset(result.version, loginName);
+      console.log('✅ Team saved successfully with version:', result.version);
+    } catch (error) {
+      console.error('❌ Error saving team:', error);
+      alert('❌ Failed to save team. Please try again.');
+      return;
+    }
+
     setShowTeamForm(false);
     setEditingTeam(null);
   };
@@ -412,10 +481,16 @@ const TeamsManagement = ({
   return (
     <div className="bg-white rounded-lg shadow-md p-6">
       <div className="flex justify-between items-center mb-4">
-        <h2 className="text-2xl font-bold flex items-center gap-2">
-          <Users className="w-6 h-6" />
-          Teams Management
-        </h2>
+        <div>
+          <h2 className="text-2xl font-bold flex items-center gap-2">
+            <Users className="w-6 h-6" />
+            Teams Management
+          </h2>
+          <TimestampDisplay
+            timestamp={teamsVersion}
+            className="text-sm text-gray-500 mt-1"
+          />
+        </div>
         {isAuthenticated && userRole === 'director' && !showTeamForm && (
           <button
             onClick={handleAddNewTeam}

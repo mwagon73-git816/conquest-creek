@@ -6,6 +6,7 @@ import { tournamentStorage } from '../services/storage';
 import { isSmsEnabled } from '../firebase';
 import TeamLogo from './TeamLogo';
 import { generateChallengeId, generateMatchId } from '../utils/idGenerator';
+import { useTimestampValidation, TimestampDisplay } from '../hooks/useTimestampValidation';
 import {
   MATCH_TYPES,
   validatePlayerSelection as validatePlayerCount,
@@ -37,8 +38,12 @@ export default function ChallengeManagement({
   addLog,
   showToast,
   autoAcceptChallengeId,
-  onAutoAcceptHandled
+  onAutoAcceptHandled,
+  challengesVersion,
+  saveChallengesWithValidation
 }) {
+  const challengeValidation = useTimestampValidation('challenge');
+
   // Form states
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [showAcceptForm, setShowAcceptForm] = useState(false);
@@ -85,6 +90,14 @@ export default function ChallengeManagement({
   const [isAccepting, setIsAccepting] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Record timestamp when challenges data is loaded
+  useEffect(() => {
+    if (challengesVersion) {
+      challengeValidation.recordLoad(challengesVersion);
+      console.log('📋 Challenges loaded with version:', challengesVersion);
+    }
+  }, [challengesVersion]);
 
   // Get user's team
   const userTeam = teams.find(t => t.id === userTeamId);
@@ -292,7 +305,7 @@ export default function ChallengeManagement({
   };
 
   // Handle create challenge
-  const handleCreateChallenge = () => {
+  const handleCreateChallenge = async () => {
     // Determine the challenging team
     const challengerTeamId = userRole === 'captain' ? userTeamId : parseInt(createFormData.challengerTeamId);
 
@@ -333,7 +346,53 @@ export default function ChallengeManagement({
       notes: createFormData.notes
     };
 
-    onChallengesChange([...challenges, newChallenge]);
+    const updatedChallenges = [...challenges, newChallenge];
+
+    // Validate and save to Firestore
+    try {
+      console.log('💾 Saving challenge to Firestore with timestamp validation...');
+      const currentVersion = await tournamentStorage.getDataVersion('challenges');
+
+      const shouldProceed = await challengeValidation.validateBeforeSave(
+        currentVersion,
+        null,
+        async () => {
+          console.log('🔄 Reloading challenges due to conflict...');
+          const freshData = await tournamentStorage.getChallenges();
+          onChallengesChange(freshData || []);
+          challengeValidation.recordLoad(await tournamentStorage.getDataVersion('challenges'));
+          await tournamentStorage.logConflict('challenge', newChallenge.id, loginName, 'reloaded');
+        }
+      );
+
+      if (!shouldProceed) {
+        console.log('❌ Challenge creation canceled by user');
+        return;
+      }
+
+      const result = await saveChallengesWithValidation(updatedChallenges, challengesVersion);
+
+      if (result.conflict) {
+        alert(`⚠️ Conflict: ${result.message}`);
+        await tournamentStorage.logConflict('challenge', newChallenge.id, loginName, 'conflict');
+        return;
+      }
+
+      if (!result.success) {
+        alert(`❌ Save failed: ${result.message || 'Unknown error'}`);
+        return;
+      }
+
+      // Success!
+      onChallengesChange(updatedChallenges);
+      challengeValidation.reset(result.version, loginName);
+      console.log('✅ Challenge saved successfully to Firestore with version:', result.version);
+      alert('✅ Challenge created successfully!');
+    } catch (error) {
+      console.error('❌ Error saving challenge to Firestore:', error);
+      alert('❌ Failed to save challenge to database. Please try again.');
+      return;
+    }
 
     // Reset form
     setCreateFormData({
@@ -345,7 +404,6 @@ export default function ChallengeManagement({
       notes: ''
     });
     setShowCreateForm(false);
-    alert('✅ Challenge created successfully!\n\n⚠️ IMPORTANT: Click the "Save Data" button to save this to the database.');
   };
 
   // Handle accept challenge
@@ -486,14 +544,57 @@ export default function ChallengeManagement({
   };
 
   // Handle delete challenge (directors only)
-  const handleDeleteChallenge = (challenge) => {
+  const handleDeleteChallenge = async (challenge) => {
     if (!window.confirm('Are you sure you want to delete this challenge?\n\nThis action cannot be undone.')) {
       return;
     }
 
     const updatedChallenges = challenges.filter(c => c.id !== challenge.id);
-    onChallengesChange(updatedChallenges);
-    alert('✅ Challenge deleted successfully.\n\n⚠️ IMPORTANT: Click the "Save Data" button to save this to the database.');
+
+    // Validate and save to Firestore
+    try {
+      console.log('💾 Deleting challenge from Firestore with timestamp validation...');
+      const currentVersion = await tournamentStorage.getDataVersion('challenges');
+
+      const shouldProceed = await challengeValidation.validateBeforeSave(
+        currentVersion,
+        null,
+        async () => {
+          console.log('🔄 Reloading challenges due to conflict...');
+          const freshData = await tournamentStorage.getChallenges();
+          onChallengesChange(freshData || []);
+          challengeValidation.recordLoad(await tournamentStorage.getDataVersion('challenges'));
+          await tournamentStorage.logConflict('challenge', challenge.id, loginName, 'reloaded');
+        }
+      );
+
+      if (!shouldProceed) {
+        console.log('❌ Challenge deletion canceled by user');
+        return;
+      }
+
+      const result = await saveChallengesWithValidation(updatedChallenges, challengesVersion);
+
+      if (result.conflict) {
+        alert(`⚠️ Conflict: ${result.message}`);
+        await tournamentStorage.logConflict('challenge', challenge.id, loginName, 'conflict');
+        return;
+      }
+
+      if (!result.success) {
+        alert(`❌ Delete failed: ${result.message || 'Unknown error'}`);
+        return;
+      }
+
+      // Success!
+      onChallengesChange(updatedChallenges);
+      challengeValidation.reset(result.version, loginName);
+      console.log('✅ Challenge deleted successfully from Firestore with version:', result.version);
+      alert('✅ Challenge deleted successfully!');
+    } catch (error) {
+      console.error('❌ Error deleting challenge from Firestore:', error);
+      alert('❌ Failed to delete challenge from database. Please try again.');
+    }
   };
 
   // Handle edit challenge
@@ -509,7 +610,7 @@ export default function ChallengeManagement({
     setShowEditForm(true);
   };
 
-  const handleConfirmEdit = () => {
+  const handleConfirmEdit = async () => {
     // Validation
     if (!validatePlayerSelection(editFormData.selectedPlayers, editFormData.matchType)) {
       alert(getPlayerSelectionError(editFormData.matchType));
@@ -557,21 +658,66 @@ export default function ChallengeManagement({
       c.id === editingChallenge.id ? updatedChallenge : c
     );
 
-    onChallengesChange(updatedChallenges);
+    // Validate and save to Firestore
+    try {
+      console.log('💾 Updating challenge in Firestore with timestamp validation...');
+      const currentVersion = await tournamentStorage.getDataVersion('challenges');
 
-    // Log the edit activity
-    if (addLog && changes.length > 0) {
-      addLog(
-        ACTION_TYPES.CHALLENGE_EDITED,
-        {
-          challengerTeam: getTeamName(editingChallenge.challengerTeamId),
-          level: editFormData.proposedLevel,
-          changesSummary: `Updated ${changes.join(', ')}`
-        },
-        editingChallenge.id,
-        editingChallenge,
-        updatedChallenge
+      const shouldProceed = await challengeValidation.validateBeforeSave(
+        currentVersion,
+        null,
+        async () => {
+          console.log('🔄 Reloading challenges due to conflict...');
+          const freshData = await tournamentStorage.getChallenges();
+          onChallengesChange(freshData || []);
+          challengeValidation.recordLoad(await tournamentStorage.getDataVersion('challenges'));
+          await tournamentStorage.logConflict('challenge', editingChallenge.id, loginName, 'reloaded');
+        }
       );
+
+      if (!shouldProceed) {
+        console.log('❌ Challenge edit canceled by user');
+        return;
+      }
+
+      const result = await saveChallengesWithValidation(updatedChallenges, challengesVersion);
+
+      if (result.conflict) {
+        alert(`⚠️ Conflict: ${result.message}`);
+        await tournamentStorage.logConflict('challenge', editingChallenge.id, loginName, 'conflict');
+        return;
+      }
+
+      if (!result.success) {
+        alert(`❌ Update failed: ${result.message || 'Unknown error'}`);
+        return;
+      }
+
+      // Success!
+      onChallengesChange(updatedChallenges);
+      challengeValidation.reset(result.version, loginName);
+      console.log('✅ Challenge updated successfully in Firestore with version:', result.version);
+
+      // Log the edit activity
+      if (addLog && changes.length > 0) {
+        addLog(
+          ACTION_TYPES.CHALLENGE_EDITED,
+          {
+            challengerTeam: getTeamName(editingChallenge.challengerTeamId),
+            level: editFormData.proposedLevel,
+            changesSummary: `Updated ${changes.join(', ')}`
+          },
+          editingChallenge.id,
+          editingChallenge,
+          updatedChallenge
+        );
+      }
+
+      alert('✅ Challenge updated successfully!');
+    } catch (error) {
+      console.error('❌ Error updating challenge in Firestore:', error);
+      alert('❌ Failed to update challenge in database. Please try again.');
+      return;
     }
 
     // Reset form
@@ -584,8 +730,6 @@ export default function ChallengeManagement({
       selectedPlayers: [],
       notes: ''
     });
-
-    alert('✅ Challenge updated successfully!\n\n⚠️ IMPORTANT: Click the "Save Data" button to save this to the database.');
   };
 
   // Helper function to get team name
@@ -693,6 +837,10 @@ export default function ChallengeManagement({
               : 'View open challenges from teams'
             }
           </p>
+          <TimestampDisplay
+            timestamp={challengesVersion}
+            className="text-sm text-gray-500 mt-1"
+          />
         </div>
 
         {canCreateChallenge() && !showCreateForm && (

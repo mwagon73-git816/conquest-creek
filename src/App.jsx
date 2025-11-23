@@ -473,6 +473,109 @@ const App = () => {
     }
   };
 
+  // Individual save functions with validation for components
+  const saveTeamsWithValidation = async (updatedTeams, updatedPlayers, updatedTrades, expectedVersion) => {
+    try {
+      const result = await tournamentStorage.saveWithValidation(
+        'teams',
+        { players: updatedPlayers || players, teams: updatedTeams, trades: updatedTrades || trades },
+        expectedVersion || dataVersions.teams,
+        false
+      );
+
+      if (result.success) {
+        setTeams(updatedTeams);
+        if (updatedPlayers) setPlayers(updatedPlayers);
+        if (updatedTrades) setTrades(updatedTrades);
+        setDataVersions(prev => ({ ...prev, teams: result.version }));
+        return { success: true, version: result.version };
+      } else if (result.conflict) {
+        return { success: false, conflict: true, message: result.message, currentVersion: result.version };
+      } else {
+        return { success: false, message: result.message };
+      }
+    } catch (error) {
+      console.error('Error saving teams:', error);
+      return { success: false, message: error.message };
+    }
+  };
+
+  const savePlayersWithValidation = async (updatedPlayers, expectedVersion) => {
+    return await saveTeamsWithValidation(teams, updatedPlayers, trades, expectedVersion);
+  };
+
+  const saveMatchesWithValidation = async (updatedMatches, expectedVersion) => {
+    try {
+      const result = await tournamentStorage.saveWithValidation(
+        'matches',
+        updatedMatches,
+        expectedVersion || dataVersions.matches,
+        false
+      );
+
+      if (result.success) {
+        setMatches(updatedMatches);
+        setDataVersions(prev => ({ ...prev, matches: result.version }));
+        return { success: true, version: result.version };
+      } else if (result.conflict) {
+        return { success: false, conflict: true, message: result.message, currentVersion: result.version };
+      } else {
+        return { success: false, message: result.message };
+      }
+    } catch (error) {
+      console.error('Error saving matches:', error);
+      return { success: false, message: error.message };
+    }
+  };
+
+  const saveChallengesWithValidation = async (updatedChallenges, expectedVersion) => {
+    try {
+      const result = await tournamentStorage.saveWithValidation(
+        'challenges',
+        updatedChallenges,
+        expectedVersion || dataVersions.challenges,
+        false
+      );
+
+      if (result.success) {
+        setChallenges(updatedChallenges);
+        setDataVersions(prev => ({ ...prev, challenges: result.version }));
+        return { success: true, version: result.version };
+      } else if (result.conflict) {
+        return { success: false, conflict: true, message: result.message, currentVersion: result.version };
+      } else {
+        return { success: false, message: result.message };
+      }
+    } catch (error) {
+      console.error('Error saving challenges:', error);
+      return { success: false, message: error.message };
+    }
+  };
+
+  const saveCaptainsWithValidation = async (updatedCaptains, expectedVersion) => {
+    try {
+      const result = await tournamentStorage.saveWithValidation(
+        'captains',
+        updatedCaptains,
+        expectedVersion || dataVersions.captains,
+        false
+      );
+
+      if (result.success) {
+        setCaptains(updatedCaptains);
+        setDataVersions(prev => ({ ...prev, captains: result.version }));
+        return { success: true, version: result.version };
+      } else if (result.conflict) {
+        return { success: false, conflict: true, message: result.message, currentVersion: result.version };
+      } else {
+        return { success: false, message: result.message };
+      }
+    } catch (error) {
+      console.error('Error saving captains:', error);
+      return { success: false, message: error.message };
+    }
+  };
+
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -1203,6 +1306,9 @@ const App = () => {
               calculateTeamRatings={calculateTeamRatings}
               getEffectiveRating={getEffectiveRating}
               addLog={addLog}
+              teamsVersion={dataVersions.teams}
+              saveTeamsWithValidation={saveTeamsWithValidation}
+              loginName={loginName}
             />
           )}
 
@@ -1220,6 +1326,9 @@ const App = () => {
               addLog={addLog}
               importLock={importLock}
               setImportLock={setImportLockHelper}
+              playersVersion={dataVersions.teams}
+              savePlayersWithValidation={savePlayersWithValidation}
+              loginName={loginName}
               releaseImportLock={releaseImportLockHelper}
             />
           )}
@@ -1253,6 +1362,8 @@ const App = () => {
               showToast={showToastMessage}
               autoAcceptChallengeId={autoAcceptChallengeId}
               onAutoAcceptHandled={() => setAutoAcceptChallengeId(null)}
+              challengesVersion={dataVersions.challenges}
+              saveChallengesWithValidation={saveChallengesWithValidation}
             />
           )}
 
@@ -1274,6 +1385,8 @@ const App = () => {
               editingMatch={editingMatch}
               setEditingMatch={setEditingMatch}
               addLog={addLog}
+              matchesVersion={dataVersions.matches}
+              saveMatchesWithValidation={saveMatchesWithValidation}
             />
           )}
 

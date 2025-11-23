@@ -653,5 +653,142 @@ export const tournamentStorage = {
   async getDataVersion(collectionName) {
     const result = await storage.get(collectionName);
     return result ? result.updatedAt : null;
+  },
+
+  /**
+   * Validate timestamp before saving to detect conflicts
+   * @param {string} collectionName - Name of collection
+   * @param {string} expectedVersion - Timestamp when data was loaded
+   * @returns {Promise<{valid: boolean, currentVersion: string, message: string}>}
+   */
+  async validateTimestamp(collectionName, expectedVersion) {
+    try {
+      const currentVersion = await this.getDataVersion(collectionName);
+
+      // If no expected version provided, can't validate (backwards compatibility)
+      if (!expectedVersion) {
+        console.warn(`⚠️ No timestamp provided for ${collectionName} validation`);
+        return {
+          valid: true,
+          currentVersion,
+          message: 'No timestamp validation (backwards compatible)'
+        };
+      }
+
+      // If current version doesn't exist, data might be new
+      if (!currentVersion) {
+        return {
+          valid: true,
+          currentVersion: null,
+          message: 'No existing data found'
+        };
+      }
+
+      // Compare timestamps
+      if (currentVersion !== expectedVersion) {
+        console.warn(`⚠️ Timestamp mismatch for ${collectionName}:`, {
+          expected: expectedVersion,
+          current: currentVersion
+        });
+        return {
+          valid: false,
+          currentVersion,
+          message: 'Data has been modified by another user since you loaded it'
+        };
+      }
+
+      // Timestamps match
+      return {
+        valid: true,
+        currentVersion,
+        message: 'Timestamp valid'
+      };
+    } catch (error) {
+      console.error('Error validating timestamp:', error);
+      return {
+        valid: false,
+        currentVersion: null,
+        message: `Validation error: ${error.message}`
+      };
+    }
+  },
+
+  /**
+   * Save with timestamp validation
+   * Checks if data has been modified before saving
+   * @param {string} collectionName - Name of collection
+   * @param {any} data - Data to save
+   * @param {string} expectedVersion - Timestamp when data was loaded
+   * @param {boolean} force - Force save even if conflict detected
+   * @returns {Promise<{success: boolean, version: string, conflict: boolean, message: string}>}
+   */
+  async saveWithValidation(collectionName, data, expectedVersion, force = false) {
+    try {
+      // Validate timestamp first
+      const validation = await this.validateTimestamp(collectionName, expectedVersion);
+
+      if (!validation.valid && !force) {
+        return {
+          success: false,
+          conflict: true,
+          version: validation.currentVersion,
+          message: validation.message
+        };
+      }
+
+      // Proceed with save
+      const result = await storage.set(collectionName, data, 'data', expectedVersion);
+
+      if (!result.success) {
+        return {
+          success: false,
+          conflict: true,
+          version: validation.currentVersion,
+          message: result.message || 'Save failed'
+        };
+      }
+
+      return {
+        success: true,
+        conflict: false,
+        version: result.version,
+        message: force ? 'Saved (overwrite forced)' : 'Saved successfully'
+      };
+    } catch (error) {
+      console.error('Error in saveWithValidation:', error);
+      return {
+        success: false,
+        conflict: false,
+        version: null,
+        message: `Save error: ${error.message}`
+      };
+    }
+  },
+
+  /**
+   * Log conflict detection event
+   * @param {string} entityType - Type of entity (e.g., 'team', 'match')
+   * @param {string|number} entityId - Entity ID
+   * @param {string} userAttempting - User attempting the save
+   * @param {string} action - What happened ('reloaded', 'overwrote', 'canceled')
+   */
+  async logConflict(entityType, entityId, userAttempting, action) {
+    try {
+      const logEntry = {
+        type: 'CONFLICT_DETECTED',
+        entityType,
+        entityId,
+        userAttempting,
+        action,
+        timestamp: new Date().toISOString(),
+        message: `Conflict detected when saving ${entityType} #${entityId}. User ${action} the changes.`
+      };
+
+      await addDoc(collection(db, COLLECTIONS.ACTIVITY_LOGS), logEntry);
+      console.log('📝 Conflict logged:', logEntry);
+    } catch (error) {
+      console.error('Error logging conflict:', error);
+      // Don't fail the operation if logging fails
+    }
   }
 };
