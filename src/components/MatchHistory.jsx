@@ -27,6 +27,10 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
   const [matchTypeFilter, setMatchTypeFilter] = useState('all'); // 'all', 'singles', 'doubles'
   const [sortOrder, setSortOrder] = useState('newest'); // 'newest' or 'oldest'
 
+  // Collapsible sections state
+  const [pendingExpanded, setPendingExpanded] = useState(false); // Default: collapsed
+  const [completedExpanded, setCompletedExpanded] = useState(false); // Default: collapsed
+
   // Edit pending match states
   const [showEditPendingModal, setShowEditPendingModal] = useState(false);
   const [editingPendingMatch, setEditingPendingMatch] = useState(null);
@@ -501,6 +505,121 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
   const displayedMatches = filteredMatches.length;
   const displayedPending = filteredPendingMatches.length;
 
+  // ===== TODAY'S MATCHES FILTERING LOGIC =====
+  // Get today's date in YYYY-MM-DD format (local timezone)
+  const today = new Date();
+  const todayString = today.toLocaleDateString('en-CA'); // 'en-CA' gives YYYY-MM-DD format
+
+  // Debugging logs
+  console.log('🗓️ TODAY\'S MATCHES DEBUG');
+  console.log('Current date/time:', today.toString());
+  console.log('Today in local timezone (YYYY-MM-DD):', todayString);
+  console.log('User timezone:', Intl.DateTimeFormat().resolvedOptions().timeZone);
+  console.log('Timezone offset (minutes):', today.getTimezoneOffset());
+
+  // Helper function to check if a date matches today (timezone-safe)
+  const isToday = (dateValue) => {
+    if (!dateValue) return false;
+
+    let dateString;
+
+    // Handle different date formats
+    if (typeof dateValue === 'string') {
+      // If it's a string like "2025-11-25" or "2025-11-25T00:00:00"
+      dateString = dateValue.split('T')[0]; // Get just the YYYY-MM-DD part
+    } else if (dateValue.toDate && typeof dateValue.toDate === 'function') {
+      // If it's a Firestore Timestamp
+      dateString = dateValue.toDate().toLocaleDateString('en-CA');
+    } else if (dateValue instanceof Date) {
+      // If it's already a Date object
+      dateString = dateValue.toLocaleDateString('en-CA');
+    } else {
+      // Try to parse it as a Date
+      try {
+        const parsed = new Date(dateValue);
+        if (!isNaN(parsed.getTime())) {
+          dateString = parsed.toLocaleDateString('en-CA');
+        } else {
+          return false;
+        }
+      } catch (e) {
+        console.error('Failed to parse date:', dateValue, e);
+        return false;
+      }
+    }
+
+    const matches = dateString === todayString;
+
+    // Debug log for each comparison
+    if (matches) {
+      console.log('✅ Match found for today:', { dateValue, dateString, todayString });
+    }
+
+    return matches;
+  };
+
+  // Debug: Log all pending matches with their dates
+  console.log('\n📋 PENDING MATCHES DATE CHECK:');
+  filteredPendingMatches.forEach((challenge, idx) => {
+    const team1Name = getTeamName(challenge.challengerTeamId);
+    const team2Name = getTeamName(challenge.challengedTeamId);
+    const dateStr = challenge.acceptedDate;
+    const isTodayMatch = isToday(dateStr);
+
+    console.log(`${idx + 1}. ${team1Name} vs ${team2Name}`);
+    console.log(`   Scheduled: ${dateStr}`);
+    console.log(`   Is Today: ${isTodayMatch ? '✅ YES' : '❌ NO'}`);
+  });
+
+  // Debug: Log all completed matches with their dates
+  console.log('\n📋 COMPLETED MATCHES DATE CHECK:');
+  filteredMatches.slice(0, 10).forEach((match, idx) => {
+    const team1 = teams.find(t => t.id == match.team1Id);
+    const team2 = teams.find(t => t.id == match.team2Id);
+    const team1Name = team1?.name || 'Unknown';
+    const team2Name = team2?.name || 'Unknown';
+    const scheduledDate = match.scheduledDate;
+    const completedDate = match.date;
+    const isTodayMatch = isToday(scheduledDate) || isToday(completedDate);
+
+    console.log(`${idx + 1}. ${team1Name} vs ${team2Name}`);
+    console.log(`   Scheduled: ${scheduledDate || 'N/A'}`);
+    console.log(`   Completed: ${completedDate || 'N/A'}`);
+    console.log(`   Is Today: ${isTodayMatch ? '✅ YES' : '❌ NO'}`);
+  });
+
+  // Filter today's pending matches
+  const todaysPendingMatches = filteredPendingMatches.filter(challenge =>
+    isToday(challenge.acceptedDate)
+  );
+
+  // Filter today's completed matches
+  const todaysCompletedMatches = filteredMatches.filter(match =>
+    isToday(match.scheduledDate) || isToday(match.date)
+  );
+
+  // All today's matches combined (pending + completed)
+  const todaysMatches = [...todaysPendingMatches, ...todaysCompletedMatches];
+
+  // Pending matches excluding today
+  const pendingMatchesExcludingToday = filteredPendingMatches.filter(challenge =>
+    !isToday(challenge.acceptedDate)
+  );
+
+  // Completed matches excluding today
+  const completedMatchesExcludingToday = filteredMatches.filter(match =>
+    !isToday(match.scheduledDate) && !isToday(match.date)
+  );
+
+  // Final summary
+  console.log('\n✅ TODAY\'S MATCHES SUMMARY:');
+  console.log(`Total today's matches: ${todaysMatches.length}`);
+  console.log(`- Pending: ${todaysPendingMatches.length}`);
+  console.log(`- Completed: ${todaysCompletedMatches.length}`);
+  console.log(`Pending (excluding today): ${pendingMatchesExcludingToday.length}`);
+  console.log(`Completed (excluding today): ${completedMatchesExcludingToday.length}`);
+  console.log('─'.repeat(60));
+
   // Determine what to show based on status filter
   const showPending = matchStatusFilter === 'all' || matchStatusFilter === 'pending';
   const showCompleted = matchStatusFilter === 'all' || matchStatusFilter === 'completed';
@@ -704,20 +823,256 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
         </div>
       )}
 
-      {/* Pending Matches Section */}
-      {showPending && (
-        <section className="mb-8">
-          <h3 className="text-xl font-bold mb-4 flex items-center gap-2 text-orange-700">
-            <Clock className="w-5 h-5" />
-            Pending Matches ({filteredPendingMatches.length})
-          </h3>
-          {filteredPendingMatches.length === 0 ? (
-            <p className="text-gray-500 text-center py-6 bg-gray-50 rounded border border-gray-200">
-              No pending matches
-            </p>
+      {/* ===== TODAY'S MATCHES SECTION (Always Visible, Prominent) ===== */}
+      <section className="mb-8">
+        <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-lg shadow-lg p-6 mb-6">
+          <h2 className="text-3xl font-bold text-white flex items-center gap-3 mb-4">
+            <Calendar className="w-8 h-8" />
+            📅 TODAY'S MATCHES ({todaysMatches.length})
+          </h2>
+
+          {todaysMatches.length === 0 ? (
+            <div className="bg-white/10 backdrop-blur-sm border-2 border-white/30 rounded-lg p-8 text-center">
+              <p className="text-white text-lg font-semibold">No matches scheduled for today</p>
+              <p className="text-blue-100 text-sm mt-2">Check the pending matches below for upcoming games</p>
+            </div>
           ) : (
             <div className="space-y-3">
-              {filteredPendingMatches.map(challenge => {
+              {/* Today's Pending Matches */}
+              {todaysPendingMatches.map(challenge => {
+                const team1 = teams.find(t => t.id === challenge.challengerTeamId);
+                const team2 = teams.find(t => t.id === challenge.challengedTeamId);
+                const team1Players = getPlayerNames(challenge.challengerPlayers);
+                const team2Players = getPlayerNames(challenge.challengedPlayers);
+
+                return (
+                  <div
+                    key={challenge.id}
+                    className="bg-white/95 backdrop-blur-sm border-2 border-blue-300 rounded-lg p-4"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        {/* Match Title */}
+                        <div className="flex items-center gap-3 mb-2">
+                          <TeamLogo team={team1} size="sm" showBorder={!!team1?.logo} />
+                          <h4 className="font-bold text-gray-900">
+                            {getTeamName(challenge.challengerTeamId)}
+                          </h4>
+                          <span className="text-blue-600 font-semibold">vs</span>
+                          <TeamLogo team={team2} size="sm" showBorder={!!team2?.logo} />
+                          <h4 className="font-bold text-gray-900">
+                            {getTeamName(challenge.challengedTeamId)}
+                          </h4>
+                          <span className="px-2 py-1 bg-blue-200 text-blue-900 text-xs font-medium rounded">
+                            Level {challenge.acceptedLevel || challenge.proposedLevel}
+                          </span>
+                          <span className="px-2 py-1 bg-purple-200 text-purple-900 text-xs font-medium rounded">
+                            {formatMatchType(getMatchType(challenge))}
+                          </span>
+                          <span className="px-2 py-1 bg-yellow-200 text-yellow-900 text-xs font-bold rounded flex items-center gap-1 animate-pulse">
+                            <Clock className="w-3 h-3" />
+                            TODAY - Awaiting Results
+                          </span>
+                        </div>
+
+                        {/* Players */}
+                        <div className="grid grid-cols-2 gap-4 text-sm mb-2">
+                          <div>
+                            <div className="font-semibold text-gray-700 mb-1">
+                              {getTeamName(challenge.challengerTeamId)} Players:
+                            </div>
+                            {team1Players.length > 0 ? (
+                              team1Players.map((player, idx) => (
+                                <div key={idx} className="text-gray-600">
+                                  • {player.name} ({player.gender}) {formatNTRP(player.rating)}
+                                </div>
+                              ))
+                            ) : (
+                              <div className="text-gray-500 italic">No players listed</div>
+                            )}
+                          </div>
+
+                          <div>
+                            <div className="font-semibold text-gray-700 mb-1">
+                              {getTeamName(challenge.challengedTeamId)} Players:
+                            </div>
+                            {team2Players.length > 0 ? (
+                              team2Players.map((player, idx) => (
+                                <div key={idx} className="text-gray-600">
+                                  • {player.name} ({player.gender}) {formatNTRP(player.rating)}
+                                </div>
+                              ))
+                            ) : (
+                              <div className="text-gray-500 italic">No players listed</div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Metadata */}
+                        <div className="text-xs text-gray-500 italic mt-3 pt-2 border-t border-gray-300">
+                          {challenge.matchId && (
+                            <span className="font-mono font-semibold">Match ID: {challenge.matchId}</span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Action Buttons */}
+                      <div className="ml-4 flex flex-col gap-2">
+                        {canEditPendingMatch(challenge) && (
+                          <button
+                            onClick={() => handleEditPendingMatch(challenge)}
+                            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors font-medium whitespace-nowrap"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                            Edit
+                          </button>
+                        )}
+                        {canEnterResults(challenge) && (
+                          <button
+                            onClick={() => handleOpenResultsModal(challenge)}
+                            className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition-colors font-medium whitespace-nowrap"
+                          >
+                            <Check className="w-4 h-4" />
+                            Enter Results
+                          </button>
+                        )}
+                        {userRole === 'director' && (
+                          <button
+                            onClick={() => handleDeletePendingMatch(challenge)}
+                            className="flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 transition-colors font-medium whitespace-nowrap"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                            Delete
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* Today's Completed Matches */}
+              {todaysCompletedMatches.map(match => {
+                const team1 = teams.find(t => t.id == match.team1Id);
+                const team2 = teams.find(t => t.id == match.team2Id);
+
+                return (
+                  <div key={match.id} className="bg-white/95 backdrop-blur-sm border-2 border-green-300 rounded-lg p-4">
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="px-2 py-1 bg-green-600 text-white text-xs font-bold rounded">
+                            ✓ COMPLETED TODAY
+                          </span>
+                          {match.winner === 'team1' ? (
+                            <>
+                              <TeamLogo team={team1} size="sm" showBorder={!!team1?.logo} />
+                              <span className="font-bold text-green-600">
+                                {team1 ? team1.name : 'Team ' + match.team1Id}
+                              </span>
+                              <span className="text-sm">def.</span>
+                              <TeamLogo team={team2} size="sm" showBorder={!!team2?.logo} />
+                              <span className="font-semibold">
+                                {team2 ? team2.name : 'Team ' + match.team2Id}
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              <TeamLogo team={team2} size="sm" showBorder={!!team2?.logo} />
+                              <span className="font-bold text-green-600">
+                                {team2 ? team2.name : 'Team ' + match.team2Id}
+                              </span>
+                              <span className="text-sm">def.</span>
+                              <TeamLogo team={team1} size="sm" showBorder={!!team1?.logo} />
+                              <span className="font-semibold">
+                                {team1 ? team1.name : 'Team ' + match.team1Id}
+                              </span>
+                            </>
+                          )}
+                          <span className="font-semibold text-blue-600">
+                            {formatSetScores(match)}
+                          </span>
+                          <span className="px-2 py-1 bg-gray-200 text-gray-700 text-xs font-medium rounded">
+                            Level {match.level}
+                          </span>
+                          <span className="px-2 py-1 bg-purple-200 text-purple-900 text-xs font-medium rounded">
+                            {formatMatchType(getMatchType(match))}
+                          </span>
+                        </div>
+                        <div className="text-sm text-gray-600">
+                          {formatDate(match.date)}
+                          {match.notes && <span className="ml-2 italic">• {match.notes}</span>}
+                        </div>
+
+                        {/* Metadata */}
+                        <div className="text-xs text-gray-500 italic mt-2 pt-2 border-t border-gray-200">
+                          {match.matchId && (
+                            <span className="font-mono font-semibold">Match ID: {match.matchId}</span>
+                          )}
+                        </div>
+                      </div>
+                      {isAuthenticated && canEditMatch(match) && (
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleEditMatch(match)}
+                            className="text-blue-600 hover:text-blue-800 p-1"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteMatch(match.id)}
+                            className="text-red-600 hover:text-red-800 p-1"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* ===== PENDING MATCHES SECTION (Collapsible) ===== */}
+      {showPending && (
+        <section className="mb-8">
+          <div
+            className="flex items-center gap-3 mb-4 cursor-pointer hover:bg-gray-100 p-3 rounded-lg transition-colors"
+            onClick={() => setPendingExpanded(!pendingExpanded)}
+            role="button"
+            tabIndex={0}
+            aria-expanded={pendingExpanded}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setPendingExpanded(!pendingExpanded);
+              }
+            }}
+          >
+            <span className="text-2xl text-orange-600">
+              {pendingExpanded ? '▼' : '▶'}
+            </span>
+            <Clock className="w-5 h-5 text-orange-700" />
+            <h3 className="text-xl font-bold text-orange-700">
+              PENDING MATCHES ({pendingMatchesExcludingToday.length})
+            </h3>
+            <span className="text-sm text-gray-500 italic">
+              (Click to {pendingExpanded ? 'collapse' : 'expand'})
+            </span>
+          </div>
+
+          {pendingExpanded && (
+            <>
+              {pendingMatchesExcludingToday.length === 0 ? (
+                <p className="text-gray-500 text-center py-6 bg-gray-50 rounded border border-gray-200">
+                  No pending matches
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {pendingMatchesExcludingToday.map(challenge => {
                 const team1 = teams.find(t => t.id === challenge.challengerTeamId);
                 const team2 = teams.find(t => t.id === challenge.challengedTeamId);
                 const team1Players = getPlayerNames(challenge.challengerPlayers);
@@ -884,27 +1239,52 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
               })}
             </div>
           )}
+        </>
+      )}
         </section>
       )}
 
-      {/* Completed Matches Section */}
+      {/* ===== COMPLETED MATCHES SECTION (Collapsible) ===== */}
       {showCompleted && (
         <section>
-          <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-            <TrendingUp className="w-5 h-5" />
-            Recently Completed Matches ({filteredMatches.length})
-          </h3>
-          {matches.length === 0 ? (
-            <p className="text-gray-500 text-center py-6 bg-gray-50 rounded border border-gray-200">
-              No completed matches yet
-            </p>
-          ) : filteredMatches.length === 0 ? (
-            <p className="text-gray-500 text-center py-6 bg-gray-50 rounded border border-gray-200">
-              No matches found matching the selected filters
-            </p>
-          ) : (
-            <div className="space-y-3">
-              {filteredMatches.slice(0, 20).map(match => {
+          <div
+            className="flex items-center gap-3 mb-4 cursor-pointer hover:bg-gray-100 p-3 rounded-lg transition-colors"
+            onClick={() => setCompletedExpanded(!completedExpanded)}
+            role="button"
+            tabIndex={0}
+            aria-expanded={completedExpanded}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setCompletedExpanded(!completedExpanded);
+              }
+            }}
+          >
+            <span className="text-2xl text-green-600">
+              {completedExpanded ? '▼' : '▶'}
+            </span>
+            <TrendingUp className="w-5 h-5 text-green-700" />
+            <h3 className="text-xl font-bold text-green-700">
+              COMPLETED MATCHES ({completedMatchesExcludingToday.length})
+            </h3>
+            <span className="text-sm text-gray-500 italic">
+              (Click to {completedExpanded ? 'collapse' : 'expand'})
+            </span>
+          </div>
+
+          {completedExpanded && (
+            <>
+              {matches.length === 0 ? (
+                <p className="text-gray-500 text-center py-6 bg-gray-50 rounded border border-gray-200">
+                  No completed matches yet
+                </p>
+              ) : completedMatchesExcludingToday.length === 0 ? (
+                <p className="text-gray-500 text-center py-6 bg-gray-50 rounded border border-gray-200">
+                  No matches found matching the selected filters
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {completedMatchesExcludingToday.slice(0, 20).map(match => {
             const team1 = teams.find(t => t.id == match.team1Id);
             const team2 = teams.find(t => t.id == match.team2Id);
 
@@ -1021,6 +1401,8 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
           })}
             </div>
           )}
+        </>
+      )}
         </section>
       )}
 
