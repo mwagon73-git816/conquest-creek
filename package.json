@@ -8,7 +8,9 @@
     "preview": "vite preview",
     "query:all": "node query-all-data.js",
     "query:matches": "node query-matches.js",
-    "db:status": "node query-all-data.js"
+    "db:status": "node query-all-data.js",
+    "db:migrate": "node migrate-prod-to-dev.js",
+    "db:verify": "node verify-migration.js"
   },
   "dependencies": {
     "dotenv": "^17.2.3",

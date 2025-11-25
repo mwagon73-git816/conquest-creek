@@ -72,6 +72,7 @@ const ActivityLog = ({ logs, onRefresh }) => {
               <option value="matches">Matches</option>
               <option value="captains">Captains</option>
               <option value="deletions">Deletions</option>
+              <option value="errors">Errors & Conflicts</option>
             </select>
           </div>
         </div>

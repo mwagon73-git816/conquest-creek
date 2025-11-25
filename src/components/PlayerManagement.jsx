@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { UserPlus, Plus, Edit, Trash2, Check, X, Upload, AlertTriangle, ChevronUp, ChevronDown } from 'lucide-react';
+import { UserPlus, Plus, Edit, Trash2, Check, X, Upload, AlertTriangle, ChevronUp, ChevronDown, Save } from 'lucide-react';
 import Papa from 'papaparse';
 import { ACTION_TYPES } from '../services/activityLogger';
 import { formatNTRP, formatDynamic } from '../utils/formatters';
 import { tournamentStorage } from '../services/storage';
 import { useTimestampValidation, TimestampDisplay } from '../hooks/useTimestampValidation';
+import { useNotification } from '../contexts/NotificationContext';
 
 const PlayerManagement = ({
   players,
@@ -19,9 +20,11 @@ const PlayerManagement = ({
   addLog,
   playersVersion,
   savePlayersWithValidation,
+  // onUpdatePlayer removed - auto-save completely disabled
   loginName
 }) => {
   const playerValidation = useTimestampValidation('player');
+  const { showSuccess, showError, showInfo } = useNotification();
   const [showPlayerForm, setShowPlayerForm] = useState(false);
   const [editingPlayer, setEditingPlayer] = useState(null);
   const [playerFormData, setPlayerFormData] = useState({
@@ -144,7 +147,7 @@ const PlayerManagement = ({
 
   const handleSavePlayer = async () => {
     if (!playerFormData.firstName || !playerFormData.lastName) {
-      alert('⚠️ First name and last name are required.');
+      showError('First name and last name are required.');
       return;
     }
 
@@ -153,19 +156,19 @@ const PlayerManagement = ({
     // Captain validation
     if (playerFormData.isCaptain) {
       if (!playerFormData.captainUsername.trim()) {
-        alert('⚠️ Captain username is required.');
+        showError('Captain username is required.');
         return;
       }
       if (!playerFormData.captainPassword.trim()) {
-        alert('⚠️ Captain password is required.');
+        showError('Captain password is required.');
         return;
       }
       if (!playerFormData.captainEmail.trim()) {
-        alert('⚠️ Captain email is required.');
+        showError('Captain email is required.');
         return;
       }
       if (!validateEmail(playerFormData.captainEmail)) {
-        alert('⚠️ Please enter a valid email address.');
+        showError('Please enter a valid email address.');
         return;
       }
 
@@ -175,7 +178,7 @@ const PlayerManagement = ({
         (!editingPlayer || c.playerId !== editingPlayer.id)
       );
       if (existingCaptain) {
-        alert('⚠️ Captain username already exists.\n\nPlease choose a different username.');
+        showError('Captain username already exists. Please choose a different username.');
         return;
       }
 
@@ -185,7 +188,7 @@ const PlayerManagement = ({
         (!editingPlayer || c.playerId !== editingPlayer.id)
       );
       if (duplicateEmail) {
-        alert('⚠️ Captain email already exists.\n\nPlease use a different email.');
+        showError('Captain email already exists. Please use a different email.');
         return;
       }
     }
@@ -222,7 +225,7 @@ const PlayerManagement = ({
         if (targetTeamId !== null) {
           const check = canAddPlayerToTeam(editingPlayer, targetTeamId, true);
           if (!check.allowed) {
-            alert(`⚠️ Cannot reassign player to team:\n\n${check.reason}`);
+            showError(`Cannot reassign player to team: ${check.reason}`);
             return;
           }
         }
@@ -288,7 +291,7 @@ const PlayerManagement = ({
         };
         setCaptains([...captains, newCaptain]);
 
-        alert(`✅ Player promoted to captain!\n\nUsername: ${playerData.captainUsername}\nPassword: ${playerData.captainPassword}\n\n⚠️ IMPORTANT: Click the "Save Data" button to save this to the database.`);
+        showInfo(`Player promoted to captain! Username: ${playerData.captainUsername}, Password: ${playerData.captainPassword}. IMPORTANT: Click "Save Data" to persist this to the database.`, 10000);
       } else if (!isCaptainNow && wasCaptain) {
         // Player captain status is being removed
         const linkedCaptain = captains.find(c => c.playerId === editingPlayer.id);
@@ -347,7 +350,7 @@ const PlayerManagement = ({
         };
         setCaptains([...captains, newCaptain]);
 
-        alert(`✅ Player added and promoted to captain!\n\nUsername: ${playerData.captainUsername}\nPassword: ${playerData.captainPassword}\n\n⚠️ IMPORTANT: Click the "Save Data" button to save this to the database.`);
+        showInfo(`Player added and promoted to captain! Username: ${playerData.captainUsername}, Password: ${playerData.captainPassword}. IMPORTANT: Click "Save Data" to persist this to the database.`, 10000);
       }
 
       // Log the add
@@ -389,22 +392,29 @@ const PlayerManagement = ({
       const result = await savePlayersWithValidation(players, playersVersion);
 
       if (result.conflict) {
-        alert(`⚠️ Conflict: ${result.message}`);
+        showError(`Conflict: ${result.message}. Please refresh and try again.`);
         await tournamentStorage.logConflict('player', editingPlayer?.id || 'new', loginName, 'conflict');
         return;
       }
 
       if (!result.success) {
-        alert(`❌ Save failed: ${result.message || 'Unknown error'}`);
+        showError(`Failed to save player: ${result.message || 'Unknown error'}. Please try again.`);
         return;
       }
 
       // Success!
       playerValidation.reset(result.version, loginName);
       console.log('✅ Player saved successfully to Firestore with version:', result.version);
+
+      // Show success message
+      if (editingPlayer) {
+        showSuccess('Player updated successfully!');
+      } else {
+        showSuccess(`Player added successfully!${playerFormData.isCaptain ? ' Captain credentials saved.' : ''}`);
+      }
     } catch (error) {
       console.error('❌ Error saving player to Firestore:', error);
-      alert('❌ Failed to save player to database. Please try again.');
+      showError('Failed to save player to database. Please check your connection and try again.');
       return;
     }
 
@@ -531,7 +541,7 @@ const PlayerManagement = ({
         { ...player, teamId }
       );
     } else {
-      alert(check.reason);
+      showError(check.reason);
     }
   };
 
@@ -687,7 +697,7 @@ const PlayerManagement = ({
         setParsedPlayers(validated);
       },
       error: (error) => {
-        alert('❌ Invalid CSV format.\n\n' + error.message + '\n\nPlease check your file format and try again.');
+        showError(`Invalid CSV format: ${error.message}. Please check your file format and try again.`);
         setCsvFile(null);
       }
     });
@@ -697,7 +707,7 @@ const PlayerManagement = ({
     const validPlayers = parsedPlayers.filter(p => p.isValid);
 
     if (validPlayers.length === 0) {
-      alert('⚠️ No valid players to import.\n\nPlease check your CSV file for errors.');
+      showError('No valid players to import. Please check your CSV file for errors.');
       return;
     }
 
@@ -761,7 +771,7 @@ const PlayerManagement = ({
     setPlayers([...updatedPlayers, ...newPlayers]);
 
     console.log('=== Import Complete ===');
-    alert(`✅ Import successful!\n\n${playersToUpdate.length} player(s) updated\n${playersToAdd.length} player(s) added\n\n⚠️ IMPORTANT: Click the "Save Data" button to save this to the database.`);
+    showSuccess(`Import successful! ${playersToUpdate.length} player(s) updated, ${playersToAdd.length} player(s) added. IMPORTANT: Click "Save Data" to persist to database.`, 6000);
 
     // Reset import form
     setShowImportForm(false);
@@ -811,7 +821,7 @@ const PlayerManagement = ({
     // Close modal and reset
     handleCloseDeleteModal();
 
-    alert('✅ All players have been deleted.\n\n⚠️ IMPORTANT: Click the "Save Data" button to save this to the database.');
+    showSuccess('All players have been deleted. IMPORTANT: Click "Save Data" to persist to database.', 6000);
   };
 
   const isDeleteTextValid = deleteConfirmText === 'DELETE ALL PLAYERS';
@@ -1285,7 +1295,10 @@ const PlayerManagement = ({
                 <tr key={player.id} className="border-b hover:bg-gray-50">
                   <td className="p-2">{player.firstName} {player.lastName}</td>
                   <td className="text-center p-2">{player.gender}</td>
-                  <td className="text-center p-2">{formatNTRP(player.ntrpRating)}</td>
+                  <td className="text-center p-2">
+                    {/* ⚠️ AUTO-SAVE DISABLED - Use Edit button to change NTRP */}
+                    <span>{formatNTRP(player.ntrpRating)}</span>
+                  </td>
                   <td className="text-center p-2">
                     {player.dynamicRating ? (
                       <span className="font-semibold text-blue-600">{formatDynamic(player.dynamicRating)}</span>

@@ -6,6 +6,7 @@ import { tournamentStorage, imageStorage } from '../services/storage';
 import { isSmsEnabled } from '../firebase';
 import { generateMatchId, generateChallengeId } from '../utils/idGenerator';
 import MatchResultsModal from './MatchResultsModal';
+import { useNotification } from '../contexts/NotificationContext';
 import {
   MATCH_TYPES,
   validatePlayerSelection as validatePlayerCount,
@@ -22,6 +23,7 @@ import {
 } from '../utils/matchUtils';
 
 const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange, isAuthenticated, setActiveTab, players, captains, onAddPhoto, loginName, userRole, userTeamId, editingMatch, setEditingMatch, addLog }) => {
+  const { showSuccess, showError, showInfo } = useNotification();
   const [showMatchForm, setShowMatchForm] = useState(false);
   const [matchFormData, setMatchFormData] = useState({
     matchType: MATCH_TYPES.DOUBLES,
@@ -524,17 +526,17 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
   const handleCreatePendingMatch = async () => {
     // Validation
     if (!pendingMatchFormData.opponentTeamId) {
-      alert('⚠️ Please select an opposing team.');
+      showError('Please select an opposing team.');
       return;
     }
 
     if (!pendingMatchFormData.scheduledDate) {
-      alert('⚠️ Please select a match date.');
+      showError('Please select a match date.');
       return;
     }
 
     if (!pendingMatchFormData.level) {
-      alert('⚠️ Please select a match level.');
+      showError('Please select a match level.');
       return;
     }
 
@@ -543,7 +545,7 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
     const requiredCount = getRequiredPlayerCount(matchType);
 
     if (pendingMatchFormData.team1Players.length !== requiredCount) {
-      alert(getPlayerSelectionError(matchType));
+      showError(getPlayerSelectionError(matchType));
       return;
     }
 
@@ -551,13 +553,13 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
     const team1CombinedNTRP = calculateCombinedNTRP(pendingMatchFormData.team1Players, matchType);
     const maxNTRP = parseFloat(pendingMatchFormData.level);
     if (team1CombinedNTRP > maxNTRP) {
-      alert(`⚠️ ${matchType === MATCH_TYPES.SINGLES ? 'Player rating' : 'Combined NTRP'} (${team1CombinedNTRP.toFixed(1)}) exceeds match level (${maxNTRP}). Please select different players.`);
+      showError(`${matchType === MATCH_TYPES.SINGLES ? 'Player rating' : 'Combined NTRP'} (${team1CombinedNTRP.toFixed(1)}) exceeds match level (${maxNTRP}). Please select different players.`);
       return;
     }
 
     // Opponent players are optional at creation - can be added later
     if (pendingMatchFormData.team2Players.length > 0 && pendingMatchFormData.team2Players.length !== requiredCount) {
-      alert(`⚠️ Opponent team must have 0 or ${requiredCount} player${requiredCount > 1 ? 's' : ''} selected.`);
+      showError(`Opponent team must have 0 or ${requiredCount} player${requiredCount > 1 ? 's' : ''} selected.`);
       return;
     }
 
@@ -716,7 +718,7 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
       console.log('⚠️ Don\'t forget to click "Save Data" to persist to Firebase!');
       console.log('==========================');
 
-      alert(`✅ Pending match created successfully!${notifMsg}\n\nThe match will appear in the Pending Matches section below, where either captain can enter the results when the match is played.\n\n⚠️ IMPORTANT: Click the "Save Data" button to save this to the database.`);
+      showSuccess(`Match scheduled successfully!${notifMsg} The match will appear in Pending Matches below. IMPORTANT: Click "Save Data" to persist to database.`, 6000);
 
     } catch (error) {
       console.error('Error creating pending match:', error);
@@ -725,7 +727,7 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
         stack: error.stack,
         formData: pendingMatchFormData
       });
-      alert(`❌ Error creating pending match: ${error.message}\n\nPlease try again. If the problem persists, contact the tournament director.`);
+      showError(`Failed to schedule match: ${error.message}. Please try again or contact the tournament director.`);
     }
   };
 
@@ -773,18 +775,18 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
 
   const handleSaveMatch = async () => {
     if (!matchFormData.team1Id || !matchFormData.team2Id) {
-      alert('⚠️ Please select both teams.');
+      showError('Please select both teams.');
       return;
     }
     if (matchFormData.team1Id === matchFormData.team2Id) {
-      alert('⚠️ Teams must be different.');
+      showError('Teams must be different.');
       return;
     }
 
     // Validate set scores
     const results = calculateMatchResults();
     if (!results.isValid) {
-      alert('⚠️ Please enter valid set scores.\n\nYou must enter scores for at least 2 sets with clear winners.');
+      showError('Please enter valid set scores. You must enter scores for at least 2 sets with clear winners.');
       return;
     }
 
@@ -802,13 +804,15 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
 
       // If sets are split, third set is REQUIRED
       if (setsSplit && (!matchFormData.set3Winner || !matchFormData.set3Loser)) {
-        alert('⚠️ Sets are split 1-1. A third set (match tiebreak) is required.\n\nEnter 1-0 for the tiebreak winner.');
+        showError('Sets are split 1-1. A third set (match tiebreak) is required. Enter 1-0 for the tiebreak winner.');
+        setIsSaving(false);
         return;
       }
 
       // If sets are NOT split (winner won both), third set should NOT be entered
       if (!setsSplit && matchFormData.set3Winner && matchFormData.set3Loser) {
-        alert('⚠️ The selected winner won both sets. A third set should not be entered.');
+        showError('The selected winner won both sets. A third set should not be entered.');
+        setIsSaving(false);
         return;
       }
 
@@ -823,7 +827,8 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
         if (set3WinnerWon) selectedWinnerSetsWon++;
 
         if (selectedWinnerSetsWon < 2) {
-          alert('⚠️ The selected winner did not win 2 out of 3 sets.\n\nPlease check your scores or select the correct winner.');
+          showError('The selected winner did not win 2 out of 3 sets. Please check your scores or select the correct winner.');
+          setIsSaving(false);
           return;
         }
       }
@@ -914,7 +919,7 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
       if (!result.success) {
         // Handle different error types
         if (result.alreadyCompleted) {
-          alert(`⚠️ Match Already Entered!\n\n${result.message}\n\nRefreshing data...`);
+          showError(`Match already entered! ${result.message}. Refreshing data...`, 6000);
           // Refresh both challenges and matches from server
           const [latestChallengesData, latestMatchesData] = await Promise.all([
             tournamentStorage.getChallenges(),
@@ -927,19 +932,19 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
             setMatches(JSON.parse(latestMatchesData.data));
           }
         } else if (result.notFound) {
-          alert(`⚠️ Challenge Not Found!\n\n${result.message}\n\nRefreshing data...`);
+          showError(`Challenge not found! ${result.message}. Refreshing data...`, 6000);
           const latestChallengesData = await tournamentStorage.getChallenges();
           if (latestChallengesData && onChallengesChange) {
             onChallengesChange(JSON.parse(latestChallengesData.data));
           }
         } else if (result.statusChanged) {
-          alert(`⚠️ Challenge Status Changed!\n\n${result.message}\n\nRefreshing data...`);
+          showError(`Challenge status changed! ${result.message}. Refreshing data...`, 6000);
           const latestChallengesData = await tournamentStorage.getChallenges();
           if (latestChallengesData && onChallengesChange) {
             onChallengesChange(JSON.parse(latestChallengesData.data));
           }
         } else {
-          alert(`❌ Error saving match results:\n\n${result.message}\n\nPlease try again.`);
+          showError(`Failed to save match results: ${result.message}. Please try again.`);
         }
         setIsSaving(false);
         setShowMatchForm(false);
@@ -969,7 +974,7 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
       }
     } catch (error) {
       console.error('❌ Error in match results submission:', error);
-      alert('❌ Unexpected error saving match results.\n\nPlease refresh the page and try again.');
+      showError('Unexpected error saving match results. Please refresh the page and try again.');
       setIsSaving(false);
       setShowMatchForm(false);
       setEditingMatch(null);
@@ -1025,7 +1030,7 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
         console.log('✅ Photo metadata saved to Firestore');
       } catch (error) {
         console.error('❌ Error uploading match photo:', error);
-        alert('⚠️ Failed to upload match photo.\n\nThe match was saved but the photo upload failed. Please try uploading the photo separately via the Media Gallery.');
+        showError('Failed to upload match photo. The match was saved but the photo upload failed. Please try uploading the photo separately via the Media Gallery.', 6000);
       }
     }
 
@@ -1051,11 +1056,13 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
 
     // Show appropriate success message
     if (isPendingMatch) {
-      alert('✅ Match results saved successfully!\n\nThe results have been saved to the database automatically.');
+      showSuccess('Match results saved successfully! Leaderboard updated.');
     } else if (userRole === 'captain' && emailResult.message) {
-      alert(emailResult.message + '\n\nThe match has been saved to the database automatically.');
-    } else if (!editingMatch) {
-      alert('✅ Match saved successfully!\n\nThe match has been saved to the database automatically.');
+      showSuccess(emailResult.message);
+    } else if (editingMatch) {
+      showSuccess('Match updated successfully!');
+    } else {
+      showSuccess('Match saved successfully!');
     }
 
     // Final verification
@@ -1147,13 +1154,13 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
 
     // Validate file type
     if (!file.type.startsWith('image/')) {
-      alert('⚠️ Invalid file type.\n\nPlease upload an image file (PNG, JPG, or WEBP).');
+      showError('Invalid file type. Please upload an image file (PNG, JPG, or WEBP).');
       return;
     }
 
     // Validate file size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
-      alert('⚠️ File size exceeds 5MB limit.\n\nPlease select a smaller image file.');
+      showError('File size exceeds 5MB limit. Please select a smaller image file.');
       return;
     }
 
@@ -1186,7 +1193,7 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
     } else {
       // Add player - check limit based on match type
       if (currentPlayers.length >= requiredCount) {
-        alert(getPlayerLimitAlert(matchFormData.matchType));
+        showError(getPlayerLimitAlert(matchFormData.matchType));
         return;
       }
       setMatchFormData({
@@ -1275,13 +1282,22 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
     if (addLog) {
       const team1 = teams.find(t => t.id === team1Id);
       const team2 = teams.find(t => t.id === team2Id);
+      const winnerTeam = matchResult.winner === 'team1' ? team1 : team2;
+      const scores = `${matchResult.set1Team1}-${matchResult.set1Team2}, ${matchResult.set2Team1}-${matchResult.set2Team2}${matchResult.set3Team1 ? `, ${matchResult.set3Team1}-${matchResult.set3Team2}` : ''}`;
+
       addLog(
         ACTION_TYPES.MATCH_COMPLETED,
         {
           matchId: matchResult.matchId,
           team1Name: team1?.name || 'Team 1',
           team2Name: team2?.name || 'Team 2',
-          fromChallenge: true
+          winnerTeamName: winnerTeam?.name || 'Unknown',
+          winner: matchResult.winner,
+          scores: scores,
+          level: matchResult.level,
+          matchType: getMatchType(selectedPendingMatch),
+          fromChallenge: true,
+          originChallengeId: selectedPendingMatch.challengeId
         },
         newMatch.id
       );
@@ -1290,6 +1306,9 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
     // Close modal
     setShowResultsModal(false);
     setSelectedPendingMatch(null);
+
+    // Show success notification
+    showSuccess('Match results saved successfully! Leaderboard updated. IMPORTANT: Click "Save Data" to persist to database.', 6000);
   };
 
   // Close results modal
@@ -1301,7 +1320,7 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
   // Handle deleting a pending match (directors only)
   const handleDeletePendingMatch = (pendingMatch) => {
     if (userRole !== 'director') {
-      alert('⚠️ Only tournament directors can delete pending matches.');
+      showError('Only tournament directors can delete pending matches.');
       return;
     }
 
@@ -1334,7 +1353,7 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
       null
     );
 
-    alert('✅ Pending match deleted successfully.');
+    showSuccess('Pending match deleted successfully. IMPORTANT: Click "Save Data" to persist to database.', 6000);
   };
 
   // Helper function to get team name
@@ -1524,7 +1543,7 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
                             if (e.target.checked) {
                               // Limit based on match type
                               if (pendingMatchFormData.team1Players.length >= requiredCount) {
-                                alert(getPlayerLimitAlert(pendingMatchFormData.matchType));
+                                showError(getPlayerLimitAlert(pendingMatchFormData.matchType));
                                 return;
                               }
                             setPendingMatchFormData({
@@ -1598,7 +1617,7 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
                             if (e.target.checked) {
                               // Limit to 2 players
                               if (pendingMatchFormData.team2Players.length >= 2) {
-                                alert('⚠️ You can only select 2 players for doubles.');
+                                showError('You can only select 2 players for doubles.');
                                 return;
                               }
                               setPendingMatchFormData({

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Plus, X, Check, Calendar, Users, Swords, Trophy, Clock, AlertCircle, Trash2, Edit2, Filter, ChevronDown, ChevronUp, Link2 } from 'lucide-react';
 import { ACTION_TYPES, createLogEntry } from '../services/activityLogger';
 import { formatDate } from '../utils/formatters';
@@ -7,6 +8,8 @@ import { isSmsEnabled } from '../firebase';
 import TeamLogo from './TeamLogo';
 import { generateChallengeId, generateMatchId } from '../utils/idGenerator';
 import { useTimestampValidation, TimestampDisplay } from '../hooks/useTimestampValidation';
+import { useNotification } from '../contexts/NotificationContext';
+import { requireAuth } from '../utils/redirectManager';
 import {
   MATCH_TYPES,
   validatePlayerSelection as validatePlayerCount,
@@ -43,6 +46,8 @@ export default function ChallengeManagement({
   saveChallengesWithValidation
 }) {
   const challengeValidation = useTimestampValidation('challenge');
+  const { showSuccess, showError, showInfo } = useNotification();
+  const location = useLocation();
 
   // Form states
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -98,6 +103,32 @@ export default function ChallengeManagement({
       console.log('📋 Challenges loaded with version:', challengesVersion);
     }
   }, [challengesVersion]);
+
+  // Restore context after login redirect
+  useEffect(() => {
+    if (location.state?.fromLogin && location.state?.context) {
+      const context = location.state.context;
+      console.log('🔄 Restoring challenge context after login:', context);
+
+      // Handle different actions
+      if (context.action === 'create_challenge') {
+        setShowCreateForm(true);
+        showInfo('Continue creating your challenge.');
+      } else if (context.action === 'accept_challenge' && context.challengeId) {
+        // Find the challenge and auto-open accept form
+        const challenge = challenges.find(c => c.id === context.challengeId);
+        if (challenge && challenge.status === 'open') {
+          handleAcceptChallenge(challenge);
+          showInfo('Continue accepting this challenge.');
+        } else {
+          showError('Challenge no longer available or already accepted.');
+        }
+      }
+
+      // Clear the location state so back button doesn't trigger again
+      window.history.replaceState({}, document.title);
+    }
+  }, [location, challenges]);
 
   // Get user's team
   const userTeam = teams.find(t => t.id === userTeamId);
@@ -304,29 +335,47 @@ export default function ChallengeManagement({
     }
   };
 
-  // Handle create challenge
+  // Handle "Create Challenge" button click
+  const handleShowCreateForm = () => {
+    // Check authentication and save redirect intent if needed
+    if (!requireAuth(isAuthenticated, 'create challenge', {
+      action: 'create_challenge'
+    })) {
+      // User not authenticated - requireAuth has saved the redirect intent
+      // The login modal should be shown by App.jsx
+      return;
+    }
+
+    // User is authenticated, show the form
+    setShowCreateForm(true);
+  };
+
+  // Handle create challenge submission
   const handleCreateChallenge = async () => {
     // Determine the challenging team
     const challengerTeamId = userRole === 'captain' ? userTeamId : parseInt(createFormData.challengerTeamId);
 
     // Validation
     if (userRole === 'director' && !createFormData.challengerTeamId) {
-      alert('⚠️ Please select a challenging team.');
+      showError('Please select a challenging team.');
       return;
     }
 
     // Proposed date is now optional - no validation needed
 
     if (!validatePlayerSelection(createFormData.selectedPlayers, createFormData.matchType)) {
-      alert(getPlayerSelectionError(createFormData.matchType));
+      showError(getPlayerSelectionError(createFormData.matchType));
       return;
     }
 
     if (!validateCombinedNTRP(createFormData.selectedPlayers, createFormData.proposedLevel, createFormData.matchType)) {
       const combinedRating = calculateCombinedNTRP(createFormData.selectedPlayers, createFormData.matchType);
-      alert(`Combined NTRP rating (${combinedRating.toFixed(1)}) exceeds match level (${createFormData.proposedLevel}). Please select different players or change the match level.`);
+      showError(`Combined NTRP rating (${combinedRating.toFixed(1)}) exceeds match level (${createFormData.proposedLevel}). Please select different players or change the match level.`);
       return;
     }
+
+    // Set loading state
+    setIsCreating(true);
 
     const generatedChallengeId = generateChallengeId(challenges);
     console.log('🆔 Generated Challenge ID:', generatedChallengeId);
@@ -373,13 +422,15 @@ export default function ChallengeManagement({
       const result = await saveChallengesWithValidation(updatedChallenges, challengesVersion);
 
       if (result.conflict) {
-        alert(`⚠️ Conflict: ${result.message}`);
+        showError(`Conflict: ${result.message}. Please refresh and try again.`);
         await tournamentStorage.logConflict('challenge', newChallenge.id, loginName, 'conflict');
+        setIsCreating(false);
         return;
       }
 
       if (!result.success) {
-        alert(`❌ Save failed: ${result.message || 'Unknown error'}`);
+        showError(`Failed to create challenge: ${result.message || 'Unknown error'}. Please try again.`);
+        setIsCreating(false);
         return;
       }
 
@@ -387,27 +438,43 @@ export default function ChallengeManagement({
       onChallengesChange(updatedChallenges);
       challengeValidation.reset(result.version, loginName);
       console.log('✅ Challenge saved successfully to Firestore with version:', result.version);
-      alert('✅ Challenge created successfully!');
+
+      // Get team name for success message
+      const challengerTeam = teams.find(t => t.id === challengerTeamId);
+      showSuccess(`Challenge created successfully! Sent to ${challengerTeam?.name || 'opponent'}.`);
+
+      // Reset form
+      setCreateFormData({
+        challengerTeamId: '',
+        matchType: MATCH_TYPES.DOUBLES,
+        proposedDate: '',
+        proposedLevel: '7.0',
+        selectedPlayers: [],
+        notes: ''
+      });
+      setShowCreateForm(false);
+      setIsCreating(false);
     } catch (error) {
       console.error('❌ Error saving challenge to Firestore:', error);
-      alert('❌ Failed to save challenge to database. Please try again.');
+      showError('Failed to save challenge to database. Please check your connection and try again.');
+      setIsCreating(false);
       return;
     }
-
-    // Reset form
-    setCreateFormData({
-      challengerTeamId: '',
-      matchType: MATCH_TYPES.DOUBLES,
-      proposedDate: '',
-      proposedLevel: '7.0',
-      selectedPlayers: [],
-      notes: ''
-    });
-    setShowCreateForm(false);
   };
 
   // Handle accept challenge
   const handleAcceptChallenge = (challenge) => {
+    // Check authentication and save redirect intent if needed
+    if (!requireAuth(isAuthenticated, 'accept challenge', {
+      action: 'accept_challenge',
+      challengeId: challenge.id,
+      challengeIdFormatted: challenge.challengeId
+    })) {
+      // User not authenticated - requireAuth has saved the redirect intent
+      return;
+    }
+
+    // User is authenticated, show the accept form
     setSelectedChallenge(challenge);
     setAcceptFormData({
       acceptedDate: challenge.proposedDate,
@@ -422,18 +489,18 @@ export default function ChallengeManagement({
     const challengeMatchType = getMatchType(selectedChallenge);
 
     if (!acceptFormData.acceptedDate) {
-      alert('⚠️ Please select a match date.');
+      showError('Please select a match date.');
       return;
     }
 
     if (!validatePlayerSelection(acceptFormData.selectedPlayers, challengeMatchType)) {
-      alert(getPlayerSelectionError(challengeMatchType));
+      showError(getPlayerSelectionError(challengeMatchType));
       return;
     }
 
     if (!validateCombinedNTRP(acceptFormData.selectedPlayers, acceptFormData.acceptedLevel, challengeMatchType)) {
       const combinedRating = calculateCombinedNTRP(acceptFormData.selectedPlayers, challengeMatchType);
-      alert(`Combined NTRP rating (${combinedRating.toFixed(1)}) exceeds match level (${acceptFormData.acceptedLevel}). Please select different players or change the match level.`);
+      showError(`Combined NTRP rating (${combinedRating.toFixed(1)}) exceeds match level (${acceptFormData.acceptedLevel}). Please select different players or change the match level.`);
       return;
     }
 
@@ -467,7 +534,7 @@ export default function ChallengeManagement({
       if (!result.success) {
         // Handle different error types
         if (result.alreadyAccepted) {
-          alert(`⚠️ Challenge Already Accepted!\n\n${result.message}\n\nRefreshing challenges list...`);
+          showError(`Challenge already accepted! ${result.message}. Refreshing challenges list...`, 6000);
           // Refresh challenges from server
           const latestChallengesData = await tournamentStorage.getChallenges();
           if (latestChallengesData) {
@@ -475,7 +542,7 @@ export default function ChallengeManagement({
             onChallengesChange(latestChallenges);
           }
         } else if (result.notFound) {
-          alert(`⚠️ Challenge Not Found!\n\n${result.message}\n\nRefreshing challenges list...`);
+          showError(`Challenge not found! ${result.message}. Refreshing challenges list...`, 6000);
           // Refresh challenges from server
           const latestChallengesData = await tournamentStorage.getChallenges();
           if (latestChallengesData) {
@@ -483,7 +550,7 @@ export default function ChallengeManagement({
             onChallengesChange(latestChallenges);
           }
         } else {
-          alert(`❌ Error accepting challenge:\n\n${result.message}\n\nPlease try again.`);
+          showError(`Failed to accept challenge: ${result.message}. Please try again.`);
         }
         setIsAccepting(false);
         setShowAcceptForm(false);
@@ -533,10 +600,10 @@ export default function ChallengeManagement({
         notes: ''
       });
 
-      alert('✅ Challenge accepted!\n\nThe match is now pending results.\n\nThe challenge has been saved to the database automatically.');
+      showSuccess('Challenge accepted! Match created successfully.');
     } catch (error) {
       console.error('❌ Error in challenge acceptance:', error);
-      alert('❌ Unexpected error accepting challenge.\n\nPlease refresh the page and try again.');
+      showError('Unexpected error accepting challenge. Please refresh the page and try again.');
     } finally {
       setIsAccepting(false);
       setShowAcceptForm(false);
@@ -845,7 +912,7 @@ export default function ChallengeManagement({
 
         {canCreateChallenge() && !showCreateForm && (
           <button
-            onClick={() => setShowCreateForm(true)}
+            onClick={handleShowCreateForm}
             className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors"
           >
             <Plus className="w-4 h-4" />
@@ -1226,9 +1293,21 @@ export default function ChallengeManagement({
             <div className="flex gap-3 pt-4">
               <button
                 onClick={handleCreateChallenge}
-                className="flex-1 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors font-medium"
+                disabled={isCreating}
+                className={`flex-1 px-4 py-2 rounded transition-colors font-medium flex items-center justify-center gap-2 ${
+                  isCreating
+                    ? 'bg-gray-400 cursor-not-allowed'
+                    : 'bg-blue-600 text-white hover:bg-blue-700'
+                }`}
               >
-                Create Challenge
+                {isCreating ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Creating Challenge...
+                  </>
+                ) : (
+                  'Create Challenge'
+                )}
               </button>
               <button
                 onClick={() => setShowCreateForm(false)}
@@ -1776,8 +1855,11 @@ export default function ChallengeManagement({
               <button
                 onClick={handleConfirmAccept}
                 disabled={isAccepting}
-                className="flex-1 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
+                {isAccepting && (
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                )}
                 {isAccepting ? 'Accepting Challenge...' : 'Confirm Accept'}
               </button>
               <button

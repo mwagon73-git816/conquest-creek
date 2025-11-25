@@ -1,11 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Plus, Trash2, X, Award, Edit, Check, Upload, Image as ImageIcon } from 'lucide-react';
+import { Users, Plus, Trash2, X, Award, Edit, Check, Upload, Image as ImageIcon, Edit2, AlertTriangle, Save } from 'lucide-react';
 import { ACTION_TYPES } from '../services/activityLogger';
 import { formatNTRP, formatDynamic } from '../utils/formatters';
 import { imageStorage, tournamentStorage } from '../services/storage';
 import TeamLogo from './TeamLogo';
 import LogoPreviewModal from './LogoPreviewModal';
 import { useTimestampValidation, TimestampDisplay } from '../hooks/useTimestampValidation';
+import { useNotification } from '../contexts/NotificationContext';
+// ⚠️ AUTO-SAVE REMOVED: useAutoSave and SaveStatusIndicator imports removed
+// Auto-save caused catastrophic data loss 3 times (Nov 24, 2025)
+// Manual saves only - user must explicitly click "Save Data" button
 
 const TeamsManagement = ({
   teams,
@@ -21,12 +25,26 @@ const TeamsManagement = ({
   addLog,
   teamsVersion,
   saveTeamsWithValidation,
+  onUpdateTeam,
   loginName
 }) => {
   const teamValidation = useTimestampValidation('team');
+  const { showSuccess, showError, showInfo } = useNotification();
   const [showTeamForm, setShowTeamForm] = useState(false);
   const [editingTeam, setEditingTeam] = useState(null);
   const [previewLogo, setPreviewLogo] = useState(null);
+
+  // Inline team name editing state (NO AUTO-SAVE - manual save required)
+  const [editingTeamNameId, setEditingTeamNameId] = useState(null);
+  const [teamNameText, setTeamNameText] = useState('');
+
+  // ⚠️⚠️⚠️ AUTO-SAVE REMOVED - CATASTROPHIC DATA LOSS RISK ⚠️⚠️⚠️
+  // Inline team name editing auto-save REMOVED
+  // Dates: Nov 24, 2025 - Auto-save caused database wipe 3 times
+  // Reason: Blob storage saves ENTIRE teams array as JSON - if corrupted = all data lost
+  // Solution: Manual saves only - user must click "Save Data" button
+  // DO NOT re-implement unless migrated to granular document storage
+
   const [teamFormData, setTeamFormData] = useState({
     name: '',
     captainId: null,
@@ -105,13 +123,13 @@ const TeamsManagement = ({
     // Validation
     const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/svg+xml'];
     if (!validTypes.includes(file.type)) {
-      alert('Please upload a valid image file (PNG, JPG, JPEG, or SVG)');
+      showError('Please upload a valid image file (PNG, JPG, JPEG, or SVG)');
       return;
     }
 
     const maxSize = 2 * 1024 * 1024; // 2MB
     if (file.size > maxSize) {
-      alert('File size must be less than 2MB');
+      showError('File size must be less than 2MB');
       return;
     }
 
@@ -140,7 +158,7 @@ const TeamsManagement = ({
           setLogoPreview(imageData); // Keep base64 for preview
         } catch (error) {
           console.error('Error uploading SVG logo:', error);
-          alert('Error uploading logo. Please try again.');
+          showError('Error uploading logo. Please try again.');
         }
         return;
       }
@@ -201,7 +219,7 @@ const TeamsManagement = ({
           setLogoPreview(compressedData); // Keep base64 for preview
         } catch (error) {
           console.error('Error uploading logo:', error);
-          alert('Error uploading logo. Please try again.');
+          showError('Error uploading logo. Please try again.');
         }
       };
 
@@ -229,14 +247,14 @@ const TeamsManagement = ({
         setLogoPreview(null);
       } catch (error) {
         console.error('Error removing logo:', error);
-        alert('Error removing logo. Please try again.');
+        showError('Error removing logo. Please try again.');
       }
     }
   };
 
   const handleSaveTeam = async () => {
     if (!teamFormData.name) {
-      alert('Team name is required');
+      showError('Team name is required');
       return;
     }
 
@@ -384,22 +402,23 @@ const TeamsManagement = ({
       const result = await saveTeamsWithValidation(updatedTeams, players, null, teamsVersion);
 
       if (result.conflict) {
-        alert(`⚠️ Conflict: ${result.message}`);
+        showError(`Conflict: ${result.message}. Please refresh and try again.`);
         await tournamentStorage.logConflict('team', editingTeam?.id || 'new', loginName, 'conflict');
         return;
       }
 
       if (!result.success) {
-        alert(`❌ Save failed: ${result.message}`);
+        showError(`Failed to save team: ${result.message}. Please try again.`);
         return;
       }
 
       // Success!
       teamValidation.reset(result.version, loginName);
       console.log('✅ Team saved successfully with version:', result.version);
+      showSuccess(editingTeam ? 'Team updated successfully!' : 'Team created successfully!');
     } catch (error) {
       console.error('❌ Error saving team:', error);
-      alert('❌ Failed to save team. Please try again.');
+      showError('Failed to save team. Please check your connection and try again.');
       return;
     }
 
@@ -450,6 +469,27 @@ const TeamsManagement = ({
         );
       }
     }
+  };
+
+  // Inline team name editing handlers
+  const handleStartEditTeamName = (team) => {
+    setEditingTeamNameId(team.id);
+    setTeamNameText(team.name);
+  };
+
+  const handleFinishEditTeamName = () => {
+    if (editingTeamNameId && teamNameText.trim()) {
+      // Update team name in local state only (not saved to Firestore)
+      // User must click "Save Data" button to persist changes
+      const updatedTeams = teams.map(team =>
+        team.id === editingTeamNameId
+          ? { ...team, name: teamNameText.trim() }
+          : team
+      );
+      setTeams(updatedTeams);
+    }
+    setEditingTeamNameId(null);
+    setTeamNameText('');
   };
 
   const updatePracticeCount = (month, count) => {
@@ -746,17 +786,55 @@ const TeamsManagement = ({
                     clickable={!!team.logo}
                     onClick={() => team.logo && setPreviewLogo({ url: team.logo, teamName: team.name })}
                   />
-                  <div>
-                    <div className="font-bold text-lg">{team.name}</div>
-                    <div className="text-sm text-gray-600">
-                      Captain: {assignedCaptain ? (
-                        <span className="font-semibold text-purple-700">
-                          {assignedCaptain.name}
-                        </span>
-                      ) : (
-                        <span className="text-gray-400 italic">Not Assigned</span>
-                      )}
-                    </div>
+                  <div className="flex-1">
+                    {/* Team Name with Inline Editing */}
+                    {editingTeamNameId === team.id ? (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={teamNameText}
+                            onChange={(e) => setTeamNameText(e.target.value)}
+                            className="flex-1 px-3 py-2 text-lg font-bold border border-blue-500 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            maxLength={50}
+                            autoFocus
+                          />
+                          <button
+                            onClick={handleFinishEditTeamName}
+                            className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors"
+                          >
+                            Done
+                          </button>
+                        </div>
+                        {/* ⚠️ AUTO-SAVE REMOVED - SaveStatusIndicator removed */}
+                        {/* Team name changes require clicking "Save Data" button */}
+                      </div>
+                    ) : (
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <div className="font-bold text-lg">{team.name}</div>
+                          {/* Inline Edit Button (Directors Only) - Edits local state, requires "Save Data" to persist */}
+                          {isAuthenticated && userRole === 'director' && (
+                            <button
+                              onClick={() => handleStartEditTeamName(team)}
+                              className="p-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded transition-colors"
+                              title="Edit team name"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                        <div className="text-sm text-gray-600">
+                          Captain: {assignedCaptain ? (
+                            <span className="font-semibold text-purple-700">
+                              {assignedCaptain.name}
+                            </span>
+                          ) : (
+                            <span className="text-gray-400 italic">Not Assigned</span>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
                 {isAuthenticated && userRole === 'director' && (

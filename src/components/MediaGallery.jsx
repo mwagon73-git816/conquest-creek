@@ -1,7 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Upload, X, ChevronLeft, ChevronRight, Trash2, Image as ImageIcon, Filter } from 'lucide-react';
+import { Upload, X, ChevronLeft, ChevronRight, Trash2, Image as ImageIcon, Filter, Edit2 } from 'lucide-react';
 import { formatDate } from '../utils/formatters';
 import { imageStorage } from '../services/storage';
+// ⚠️ AUTO-SAVE REMOVED: useAutoSave and SaveStatusIndicator imports removed
+// Auto-save caused catastrophic data loss 3 times (Nov 24, 2025)
+// Manual saves only - user must explicitly click save button
 
 const MediaGallery = ({
   photos,
@@ -9,6 +12,7 @@ const MediaGallery = ({
   isAuthenticated,
   userRole,
   onAddPhoto,
+  // onUpdatePhoto removed - auto-save disabled, caption editing not available
   onDeletePhoto,
   maxPhotos = 50
 }) => {
@@ -27,10 +31,21 @@ const MediaGallery = ({
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
 
+  // State for caption editing (directors only)
+  const [editingCaption, setEditingCaption] = useState(false);
+  const [captionText, setCaptionText] = useState('');
+
   // State for filtering and sorting
   const [sortBy, setSortBy] = useState('newest'); // 'newest' or 'oldest'
   const [filterTeam, setFilterTeam] = useState(''); // team ID or empty for all
   const [showFilters, setShowFilters] = useState(false);
+
+  // ⚠️⚠️⚠️ AUTO-SAVE REMOVED - CATASTROPHIC DATA LOSS RISK ⚠️⚠️⚠️
+  // captionAutoSave hook REMOVED - Auto-save caused database wipe 3 times
+  // Dates: Nov 24, 2025
+  // Reason: Blob storage architecture incompatible with auto-save
+  // Caption edits now require manual save action
+  // DO NOT re-implement auto-save unless migrated to granular storage
 
   // Ref for file input
   const fileInputRef = useRef(null);
@@ -216,7 +231,7 @@ const MediaGallery = ({
       console.log('  - Upload Timestamp:', newPhoto.uploadTimestamp);
       console.log('📸 ================================');
 
-      // Add photo
+      // Add photo (manual user action - uploads immediately to Firebase)
       await onAddPhoto(newPhoto);
 
       // Reset form
@@ -249,15 +264,29 @@ const MediaGallery = ({
   const handleOpenLightbox = (index) => {
     setLightboxIndex(index);
     setLightboxOpen(true);
+    // Initialize caption text from current photo
+    const photo = filteredPhotos[index];
+    setCaptionText(photo.caption || '');
+    setEditingCaption(false);
   };
 
   // Lightbox navigation
   const handleLightboxPrev = () => {
-    setLightboxIndex((prev) => (prev - 1 + filteredPhotos.length) % filteredPhotos.length);
+    const newIndex = (lightboxIndex - 1 + filteredPhotos.length) % filteredPhotos.length;
+    setLightboxIndex(newIndex);
+    // Update caption text when navigating
+    const photo = filteredPhotos[newIndex];
+    setCaptionText(photo.caption || '');
+    setEditingCaption(false);
   };
 
   const handleLightboxNext = () => {
-    setLightboxIndex((prev) => (prev + 1) % filteredPhotos.length);
+    const newIndex = (lightboxIndex + 1) % filteredPhotos.length;
+    setLightboxIndex(newIndex);
+    // Update caption text when navigating
+    const photo = filteredPhotos[newIndex];
+    setCaptionText(photo.caption || '');
+    setEditingCaption(false);
   };
 
   // Delete photo
@@ -738,19 +767,66 @@ const MediaGallery = ({
               )}
             </div>
 
-            {/* Photo Info */}
+            {/* Photo Info with Caption Editing */}
             <div className="w-full max-w-6xl mt-4 text-white">
-              <div className="flex justify-between items-start">
-                <div>
-                  <p className="text-lg font-semibold">
-                    {getPhotoInfo(filteredPhotos[lightboxIndex])}
-                  </p>
-                  <p className="text-sm text-gray-300 mt-1">
-                    {formatDate(filteredPhotos[lightboxIndex].uploadTimestamp || filteredPhotos[lightboxIndex].matchDate)}
-                  </p>
+              <div className="flex justify-between items-start gap-4">
+                <div className="flex-1">
+                  {/* Caption Editing (Directors Only) */}
+                  {canDelete && editingCaption ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={captionText}
+                          onChange={(e) => setCaptionText(e.target.value)}
+                          placeholder="Enter custom caption..."
+                          className="flex-1 px-3 py-2 bg-gray-800 text-white border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          maxLength={100}
+                          autoFocus
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingCaption(false);
+                          }}
+                          className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold transition-colors"
+                        >
+                          Done
+                        </button>
+                      </div>
+                      {/* ⚠️ AUTO-SAVE REMOVED - SaveStatusIndicator removed */}
+                      {/* Caption editing disabled - no save mechanism available */}
+                    </div>
+                  ) : (
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <p className="text-lg font-semibold">
+                          {getPhotoInfo(filteredPhotos[lightboxIndex])}
+                        </p>
+                        {/* Edit Caption Button (Directors Only) */}
+                        {canDelete && onUpdatePhoto && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingCaption(true);
+                            }}
+                            className="p-1.5 bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors"
+                            title="Edit caption"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                      <p className="text-sm text-gray-300 mt-1">
+                        {formatDate(filteredPhotos[lightboxIndex].uploadTimestamp || filteredPhotos[lightboxIndex].matchDate)}
+                      </p>
+                    </div>
+                  )}
                 </div>
+                {/* Photo Counter */}
                 {filteredPhotos.length > 1 && (
-                  <p className="text-sm text-gray-300">
+                  <p className="text-sm text-gray-300 whitespace-nowrap">
                     {lightboxIndex + 1} / {filteredPhotos.length}
                   </p>
                 )}

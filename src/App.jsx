@@ -3,6 +3,7 @@ import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { RefreshCw, Check } from 'lucide-react';
 import { tournamentStorage } from './services/storage';
 import { createLogEntry, ACTION_TYPES } from './services/activityLogger';
+import { getPendingRedirect, clearRedirectIntent } from './utils/redirectManager';
 import Header from './components/Header';
 import TabNavigation from './components/TabNavigation';
 import LoginModal from './components/LoginModal';
@@ -62,10 +63,12 @@ const App = () => {
   const addLog = async (action, details, entityId = null, before = null, after = null) => {
     try {
       const user = loginName || 'System';
-      const logEntry = createLogEntry(action, user, details, entityId, before, after);
+      const role = userRole || 'unknown';
+      const logEntry = createLogEntry(action, user, details, entityId, before, after, role);
       await tournamentStorage.addActivityLog(logEntry);
     } catch (error) {
       console.error('Error adding activity log:', error);
+      // Don't throw error - logging should never break the main operation
     }
   };
 
@@ -616,18 +619,38 @@ const App = () => {
     loadData();
   }, []);
 
-  // Post-login redirect handling
+  // Post-login redirect handling - uses new redirectManager for all protected actions
   useEffect(() => {
     if (isAuthenticated) {
+      // Check for new redirectManager redirect
+      const intent = getPendingRedirect();
+      if (intent) {
+        console.log('🔄 Processing post-login redirect:', intent);
+
+        // Navigate to saved location with context
+        if (intent.context && Object.keys(intent.context).length > 0) {
+          // Has context - navigate with state to restore user's action
+          navigate(intent.returnTo, {
+            state: {
+              fromLogin: true,
+              context: intent.context
+            }
+          });
+        } else {
+          // No context - simple redirect
+          navigate(intent.returnTo);
+        }
+        return;
+      }
+
+      // Fallback: Check for old sessionStorage redirect (backward compatibility)
       const returnTo = sessionStorage.getItem('returnTo');
       const returnAction = sessionStorage.getItem('returnAction');
 
       if (returnTo && returnAction === 'accept-challenge') {
-        // Clear the stored values
+        console.log('🔄 Processing legacy redirect (migrating to new system)');
         sessionStorage.removeItem('returnTo');
         sessionStorage.removeItem('returnAction');
-
-        // Redirect to the challenge page
         navigate(returnTo);
       }
     }
@@ -764,6 +787,9 @@ const App = () => {
       await tournamentStorage.removeActiveSession(loginName);
     }
 
+    // Clear any pending redirects on logout
+    clearRedirectIntent();
+
     setIsAuthenticated(false);
     setLoginName('');
     setUserRole('');
@@ -800,62 +826,75 @@ const App = () => {
     setPhotos(photos.filter(p => p.id !== photoId));
   };
 
+  // ✅ PHOTO UPLOAD RESTORED - This is a manual user action, NOT auto-save
+  // Photos are uploaded immediately when user clicks "Upload" button
   const handleAddPhoto = async (photoData) => {
-    console.log('📥 ===== APP.JSX: handleAddPhoto called =====');
-    console.log('📥 Photo data received:', JSON.stringify(photoData, null, 2));
-    console.log('📥 Current photos count before add:', photos.length);
-
-    let updatedPhotos = [...photos];
-    if (updatedPhotos.length >= 50) {
-      updatedPhotos.sort((a, b) => new Date(a.uploadTimestamp) - new Date(b.uploadTimestamp));
-      updatedPhotos = updatedPhotos.slice(1);
-    }
-    updatedPhotos.push(photoData);
-
-    console.log('📥 Updated photos count after add:', updatedPhotos.length);
-    console.log('📥 Photo added to state. Auto-saving to Firestore...');
-
-    // Update state first
-    setPhotos(updatedPhotos);
-
-    // Auto-save photos to Firestore immediately
     try {
-      console.log('💾 ===== AUTO-SAVING PHOTO TO FIREBASE =====');
-      const photosResult = await tournamentStorage.setPhotos(
-        JSON.stringify(updatedPhotos),
-        dataVersions.photos
+      // Add photo to local state immediately
+      const newPhotos = [...photos, photoData];
+      setPhotos(newPhotos);
+
+      // Save to Firestore immediately (this is NOT auto-save - it's a manual upload action)
+      await tournamentStorage.setPhotos(JSON.stringify(newPhotos));
+
+      // Log the upload
+      const photoInfo = photoData.caption ||
+                       (photoData.team1Name && photoData.team2Name ? `${photoData.team1Name} vs ${photoData.team2Name}` : null) ||
+                       'Tournament photo';
+
+      addLog(
+        ACTION_TYPES.PHOTO_UPLOADED,
+        {
+          photoInfo,
+          photoId: photoData.id,
+          uploadDate: photoData.uploadTimestamp || photoData.matchDate,
+          teams: photoData.team1Name && photoData.team2Name ? `${photoData.team1Name} vs ${photoData.team2Name}` : null
+        },
+        photoData.id,
+        null,
+        photoData
       );
 
-      if (photosResult?.success) {
-        setDataVersions(prev => ({ ...prev, photos: photosResult.version }));
-        console.log('✅ Photo auto-saved successfully to Firestore. Version:', photosResult.version);
-
-        // Log the photo that was added
-        addLog(
-          ACTION_TYPES.PHOTO_UPLOADED,
-          {
-            matchInfo: photoData.caption ||
-                      (photoData.team1Name && photoData.team2Name ? `${photoData.team1Name} vs ${photoData.team2Name}` : null) ||
-                      'Match photo',
-            photoId: photoData.id,
-            uploadDate: photoData.uploadTimestamp || photoData.matchDate,
-            teams: photoData.team1Name && photoData.team2Name ? `${photoData.team1Name} vs ${photoData.team2Name}` : null
-          },
-          photoData.id,
-          null,
-          photoData
-        );
-      } else if (photosResult?.conflict) {
-        console.error('❌ Conflict detected while auto-saving photo');
-        alert('⚠️ Data conflict detected. Another user has modified photos. Please refresh the page.');
-      }
+      return { success: true };
     } catch (error) {
-      console.error('❌ Error auto-saving photo:', error);
-      alert('⚠️ Photo uploaded but failed to save to database.\n\nPlease use the manual Save button to persist your changes.');
+      console.error('Error adding photo:', error);
+      // Rollback on error
+      setPhotos(photos);
+      return { success: false, error: error.message };
     }
-
-    console.log('📥 ==========================================');
   };
+
+  // ⚠️⚠️⚠️ AUTO-SAVE REMOVED - CATASTROPHIC DATA LOSS RISK ⚠️⚠️⚠️
+  // handleUpdatePhoto REMOVED - Auto-save caused database wipe 3 times
+  // Dates: Nov 24, 2025
+  // Reason: Blob storage architecture incompatible with auto-save
+  // DO NOT re-implement auto-save unless migrated to granular storage
+  // Manual saves with explicit user action are REQUIRED for data safety
+
+  // ⚠️⚠️⚠️ AUTO-SAVE REMOVED - CATASTROPHIC DATA LOSS RISK ⚠️⚠️⚠️
+  // handleUpdateTeam REMOVED - Auto-save caused database wipe 3 times
+  // Dates: Nov 24, 2025
+  // Reason: Blob storage architecture incompatible with auto-save
+  // When saving teams, ENTIRE teams array is overwritten as JSON blob
+  // If array is corrupted/empty when auto-save triggers → ALL teams deleted
+  // DO NOT re-implement auto-save unless migrated to granular storage
+  // Manual saves with explicit user action are REQUIRED for data safety
+
+  // ⚠️⚠️⚠️ AUTO-SAVE REMOVED - CATASTROPHIC DATA LOSS RISK ⚠️⚠️⚠️
+  // handleUpdatePlayer REMOVED - Auto-save caused database wipe 3 times
+  // Dates: Nov 24, 2025
+  // Reason: Blob storage architecture incompatible with auto-save
+  // When saving players, ENTIRE players array is overwritten as JSON blob
+  // If array is corrupted/empty when auto-save triggers → ALL players deleted
+  // DO NOT re-implement auto-save unless migrated to granular storage
+  // Manual saves with explicit user action are REQUIRED for data safety
+
+  // ⚠️⚠️⚠️ AUTO-SAVE REMOVED - CATASTROPHIC DATA LOSS RISK ⚠️⚠️⚠️
+  // handleAddPhoto REMOVED - Auto-save caused database wipe 3 times
+  // Dates: Nov 24, 2025
+  // Reason: Blob storage architecture incompatible with auto-save
+  // DO NOT re-implement auto-save unless migrated to granular storage
+  // Manual saves with explicit user action are REQUIRED for data safety
 
   const getEffectiveRating = (player) => {
     return player.dynamicRating || player.ntrpRating || 0;
@@ -1096,13 +1135,20 @@ const App = () => {
   const calculateTeamPoints = (teamId) => {
     const teamMatches = matches.filter(m => m.team1Id === teamId || m.team2Id === teamId);
 
+    // Find team name for logging
+    const team = teams.find(t => t.id === teamId);
+    const teamName = team?.name || `Team ${teamId}`;
+
     let matchWinPoints = 0;
     let matchWins = 0;
     let matchLosses = 0;
     let setsWon = 0;
     let gamesWon = 0;
 
-    teamMatches.forEach(match => {
+    console.log(`\n🎾 CALCULATING SETS WON FOR: ${teamName} (ID: ${teamId})`);
+    console.log(`Total matches found: ${teamMatches.length}`);
+
+    teamMatches.forEach((match, matchIndex) => {
       const isTeam1 = match.team1Id === teamId;
       const won = isTeam1 ? match.winner === 'team1' : match.winner === 'team2';
 
@@ -1122,14 +1168,73 @@ const App = () => {
         matchLosses++;
       }
 
+      // Calculate sets and games won directly from match scores
+      // This ensures accuracy even if team1Sets/team2Sets fields are missing or wrong
+
+      // Parse set scores
+      const s1t1 = parseInt(match.set1Team1) || 0;
+      const s1t2 = parseInt(match.set1Team2) || 0;
+      const s2t1 = parseInt(match.set2Team1) || 0;
+      const s2t2 = parseInt(match.set2Team2) || 0;
+      const s3t1 = parseInt(match.set3Team1) || 0;
+      const s3t2 = parseInt(match.set3Team2) || 0;
+
+      // Count sets won by this team
+      let matchSetsWon = 0;
+      let matchGamesWon = 0;
+
       if (isTeam1) {
-        setsWon += parseInt(match.team1Sets || 0);
-        gamesWon += parseInt(match.team1Games || 0);
+        // Team is Team1 in this match
+        // Set 1
+        if (s1t1 > 0 && s1t2 > 0) {
+          if (s1t1 > s1t2) matchSetsWon++;
+          matchGamesWon += s1t1;
+        }
+        // Set 2
+        if (s2t1 > 0 && s2t2 > 0) {
+          if (s2t1 > s2t2) matchSetsWon++;
+          matchGamesWon += s2t1;
+        }
+        // Set 3 (if played)
+        if (s3t1 > 0 && s3t2 > 0) {
+          if (s3t1 > s3t2) matchSetsWon++;
+          matchGamesWon += s3t1;
+        }
       } else {
-        setsWon += parseInt(match.team2Sets || 0);
-        gamesWon += parseInt(match.team2Games || 0);
+        // Team is Team2 in this match
+        // Set 1
+        if (s1t1 > 0 && s1t2 > 0) {
+          if (s1t2 > s1t1) matchSetsWon++;
+          matchGamesWon += s1t2;
+        }
+        // Set 2
+        if (s2t1 > 0 && s2t2 > 0) {
+          if (s2t2 > s2t1) matchSetsWon++;
+          matchGamesWon += s2t2;
+        }
+        // Set 3 (if played)
+        if (s3t1 > 0 && s3t2 > 0) {
+          if (s3t2 > s3t1) matchSetsWon++;
+          matchGamesWon += s3t2;
+        }
       }
+
+      setsWon += matchSetsWon;
+      gamesWon += matchGamesWon;
+
+      // Detailed logging for each match
+      console.log(`  Match ${matchIndex + 1}: ${match.team1Name} vs ${match.team2Name}`);
+      console.log(`    Date: ${match.date}`);
+      console.log(`    Set 1: ${s1t1}-${s1t2}${s1t1 > 0 && s1t2 > 0 ? (isTeam1 ? (s1t1 > s1t2 ? ' ✓' : ' ✗') : (s1t2 > s1t1 ? ' ✓' : ' ✗')) : ''}`);
+      console.log(`    Set 2: ${s2t1}-${s2t2}${s2t1 > 0 && s2t2 > 0 ? (isTeam1 ? (s2t1 > s2t2 ? ' ✓' : ' ✗') : (s2t2 > s2t1 ? ' ✓' : ' ✗')) : ''}`);
+      if (s3t1 > 0 && s3t2 > 0) {
+        console.log(`    Set 3: ${s3t1}-${s3t2}${isTeam1 ? (s3t1 > s3t2 ? ' ✓' : ' ✗') : (s3t2 > s3t1 ? ' ✓' : ' ✗')}`);
+      }
+      console.log(`    ${teamName} won ${matchSetsWon} sets, ${matchGamesWon} games in this match`);
     });
+
+    console.log(`📊 TOTAL FOR ${teamName}: ${setsWon} sets won, ${gamesWon} games won`);
+    console.log(`─`.repeat(60));
 
     const bonusPoints = calculateBonusPoints(teamId);
     const cappedBonus = Math.min(bonusPoints, matchWinPoints * 0.25);
@@ -1157,14 +1262,31 @@ const App = () => {
   };
 
   const getLeaderboard = () => {
-    return teams.map(team => ({
+    const leaderboard = teams.map(team => ({
       ...team,
       ...calculateTeamPoints(team.id)
     })).sort((a, b) => {
+      // Primary sort: Total points (descending)
       if (b.totalPoints !== a.totalPoints) return b.totalPoints - a.totalPoints;
+      // First tiebreaker: Sets won (descending)
       if (b.setsWon !== a.setsWon) return b.setsWon - a.setsWon;
+      // Second tiebreaker: Games won (descending)
       return b.gamesWon - a.gamesWon;
     });
+
+    // Debug logging for leaderboard verification
+    console.log('🎾 ===== LEADERBOARD CALCULATION DEBUG =====');
+    leaderboard.forEach((team, index) => {
+      console.log(`${index + 1}. ${team.name}`);
+      console.log(`   Points: ${team.totalPoints} (${team.matchWinPoints} win + ${team.cappedBonus.toFixed(1)} bonus)`);
+      console.log(`   Match Record: ${team.matchWins}-${team.matchLosses}`);
+      console.log(`   Sets Won: ${team.setsWon}`);
+      console.log(`   Games Won: ${team.gamesWon}`);
+      console.log(`   Matches Played: ${team.matchesPlayed}`);
+    });
+    console.log('==========================================\n');
+
+    return leaderboard;
   };
 
   if (loading) {

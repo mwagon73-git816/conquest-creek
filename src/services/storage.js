@@ -775,13 +775,26 @@ export const tournamentStorage = {
   async logConflict(entityType, entityId, userAttempting, action) {
     try {
       const logEntry = {
-        type: 'CONFLICT_DETECTED',
-        entityType,
-        entityId,
-        userAttempting,
-        action,
+        action: 'conflict_detected',
+        actionCategory: 'conflict',
+        entityType: entityType,
+        entityId: entityId,
+        user: userAttempting || 'Unknown',
+        userRole: 'unknown',
         timestamp: new Date().toISOString(),
-        message: `Conflict detected when saving ${entityType} #${entityId}. User ${action} the changes.`
+        details: {
+          entityType: entityType,
+          entityId: entityId,
+          conflictType: 'timestamp_mismatch',
+          userAction: action || 'unknown',
+          message: `Conflict detected when saving ${entityType} #${entityId}. User ${action} the changes.`
+        },
+        metadata: {
+          browser: 'Unknown',
+          device: 'Unknown',
+          page: 'Unknown',
+          userAgent: 'Server'
+        }
       };
 
       await addDoc(collection(db, COLLECTIONS.ACTIVITY_LOGS), logEntry);

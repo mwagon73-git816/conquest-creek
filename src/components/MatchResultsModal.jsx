@@ -243,11 +243,8 @@ export default function MatchResultsModal({
         );
       }
 
-      // Close modal
+      // Close modal and let parent component handle success notification
       handleClose();
-
-      // Show success message
-      alert('✅ Match results saved successfully!\n\n⚠️ IMPORTANT: Click the "Save Data" button to save this to the database.');
     } catch (error) {
       console.error('Error saving match results:', error);
       setSaveError('Failed to save match results. Please try again.');
