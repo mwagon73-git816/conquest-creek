@@ -4,6 +4,7 @@ import { RefreshCw, Check } from 'lucide-react';
 import { tournamentStorage } from './services/storage';
 import { createLogEntry, ACTION_TYPES } from './services/activityLogger';
 import { getPendingRedirect, clearRedirectIntent } from './utils/redirectManager';
+import { MATCH_TYPES, getMatchType } from './utils/matchUtils';
 import Header from './components/Header';
 import TabNavigation from './components/TabNavigation';
 import LoginModal from './components/LoginModal';
@@ -1075,19 +1076,32 @@ const App = () => {
       let mixedDoublesCount = 0;
 
       monthMatches.forEach(match => {
-        const teamPlayers = match.team1Id === teamId ? match.team1Players : match.team2Players;
-        if (teamPlayers && teamPlayers.length > 0) {
-          const playerGenders = teamPlayers.map(playerId => {
-            const player = players.find(p => p.id === playerId);
-            return player ? player.gender : null;
-          }).filter(g => g !== null);
+        // Check if match type is explicitly Mixed Doubles (new matches)
+        const matchType = getMatchType(match);
+        let isMixedDoubles = matchType === MATCH_TYPES.MIXED_DOUBLES;
 
-          const hasMale = playerGenders.includes('M');
-          const hasFemale = playerGenders.includes('F');
+        // For backward compatibility: if NOT explicitly marked as mixed_doubles,
+        // infer from player genders (historical matches)
+        if (!isMixedDoubles) {
+          const teamPlayers = match.team1Id === teamId ? match.team1Players : match.team2Players;
+          if (teamPlayers && teamPlayers.length > 0) {
+            const playerGenders = teamPlayers.map(playerId => {
+              const player = players.find(p => p.id === playerId);
+              return player ? player.gender : null;
+            }).filter(g => g !== null);
 
-          if (hasMale && hasFemale) {
-            mixedDoublesCount++;
+            const hasMale = playerGenders.includes('M');
+            const hasFemale = playerGenders.includes('F');
+
+            // Count as mixed doubles if team has both male and female players
+            if (hasMale && hasFemale) {
+              isMixedDoubles = true;
+            }
           }
+        }
+
+        if (isMixedDoubles) {
+          mixedDoublesCount++;
         }
       });
 

@@ -12,6 +12,7 @@ import {
   validatePlayerSelection as validatePlayerCount,
   calculateCombinedNTRP as calcCombinedNTRP,
   validateCombinedNTRP as validateNTRPLimit,
+  validateMixedDoublesGenders,
   getRequiredPlayerCount,
   getPlayerSelectionLabel,
   getPlayerLimitAlert,
@@ -549,6 +550,14 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
       return;
     }
 
+    // Mixed Doubles validation: must have 1 male and 1 female player per team
+    if (matchType === MATCH_TYPES.MIXED_DOUBLES) {
+      if (!validateMixedDoublesGenders(pendingMatchFormData.team1Players, players)) {
+        showError('Mixed Doubles requires one male and one female player per team');
+        return;
+      }
+    }
+
     // Validate NTRP for captain's team
     const team1CombinedNTRP = calculateCombinedNTRP(pendingMatchFormData.team1Players, matchType);
     const maxNTRP = parseFloat(pendingMatchFormData.level);
@@ -561,6 +570,14 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
     if (pendingMatchFormData.team2Players.length > 0 && pendingMatchFormData.team2Players.length !== requiredCount) {
       showError(`Opponent team must have 0 or ${requiredCount} player${requiredCount > 1 ? 's' : ''} selected.`);
       return;
+    }
+
+    // Mixed Doubles validation for team2 if players are provided
+    if (matchType === MATCH_TYPES.MIXED_DOUBLES && pendingMatchFormData.team2Players.length === requiredCount) {
+      if (!validateMixedDoublesGenders(pendingMatchFormData.team2Players, players)) {
+        showError('Mixed Doubles requires one male and one female player per team (opponent team)');
+        return;
+      }
     }
 
     try {
@@ -1472,6 +1489,7 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
               >
                 <option value={MATCH_TYPES.DOUBLES}>Doubles</option>
                 <option value={MATCH_TYPES.SINGLES}>Singles</option>
+                <option value={MATCH_TYPES.MIXED_DOUBLES}>Mixed Doubles</option>
               </select>
             </div>
 
@@ -2445,6 +2463,7 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
                     >
                       <option value={MATCH_TYPES.DOUBLES}>Doubles</option>
                       <option value={MATCH_TYPES.SINGLES}>Singles</option>
+                      <option value={MATCH_TYPES.MIXED_DOUBLES}>Mixed Doubles</option>
                     </select>
                     {editingMatch && (
                       <p className="text-xs text-gray-600 mt-1">
@@ -2954,6 +2973,7 @@ const MatchEntry = ({ teams, matches, setMatches, challenges, onChallengesChange
           challengeId: selectedPendingMatch.challengeId
         } : null}
         teams={teams}
+        players={players}
         matches={matches}
         onSubmit={handleSubmitPendingResults}
         onClose={handleCloseResultsModal}

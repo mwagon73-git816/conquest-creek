@@ -15,6 +15,7 @@ import {
   validatePlayerSelection as validatePlayerCount,
   calculateCombinedNTRP as calcCombinedNTRP,
   validateCombinedNTRP as validateNTRPLimit,
+  validateMixedDoublesGenders,
   getRequiredPlayerCount,
   getPlayerSelectionLabel,
   getPlayerLimitAlert,
@@ -368,6 +369,14 @@ export default function ChallengeManagement({
       return;
     }
 
+    // Mixed Doubles validation: must have 1 male and 1 female player
+    if (createFormData.matchType === MATCH_TYPES.MIXED_DOUBLES) {
+      if (!validateMixedDoublesGenders(createFormData.selectedPlayers, players)) {
+        showError('Mixed Doubles requires one male and one female player per team');
+        return;
+      }
+    }
+
     if (!validateCombinedNTRP(createFormData.selectedPlayers, createFormData.proposedLevel, createFormData.matchType)) {
       const combinedRating = calculateCombinedNTRP(createFormData.selectedPlayers, createFormData.matchType);
       showError(`Combined NTRP rating (${combinedRating.toFixed(1)}) exceeds match level (${createFormData.proposedLevel}). Please select different players or change the match level.`);
@@ -496,6 +505,14 @@ export default function ChallengeManagement({
     if (!validatePlayerSelection(acceptFormData.selectedPlayers, challengeMatchType)) {
       showError(getPlayerSelectionError(challengeMatchType));
       return;
+    }
+
+    // Mixed Doubles validation: must have 1 male and 1 female player
+    if (challengeMatchType === MATCH_TYPES.MIXED_DOUBLES) {
+      if (!validateMixedDoublesGenders(acceptFormData.selectedPlayers, players)) {
+        showError('Mixed Doubles requires one male and one female player per team');
+        return;
+      }
     }
 
     if (!validateCombinedNTRP(acceptFormData.selectedPlayers, acceptFormData.acceptedLevel, challengeMatchType)) {
@@ -948,6 +965,7 @@ export default function ChallengeManagement({
               <option value="all">All Types</option>
               <option value={MATCH_TYPES.SINGLES}>Singles</option>
               <option value={MATCH_TYPES.DOUBLES}>Doubles</option>
+              <option value={MATCH_TYPES.MIXED_DOUBLES}>Mixed Doubles</option>
             </select>
           </div>
 
@@ -1163,6 +1181,7 @@ export default function ChallengeManagement({
               >
                 <option value={MATCH_TYPES.DOUBLES}>Doubles</option>
                 <option value={MATCH_TYPES.SINGLES}>Singles</option>
+                <option value={MATCH_TYPES.MIXED_DOUBLES}>Mixed Doubles</option>
               </select>
             </div>
 
@@ -1554,6 +1573,7 @@ export default function ChallengeManagement({
                 >
                   <option value={MATCH_TYPES.DOUBLES}>Doubles</option>
                   <option value={MATCH_TYPES.SINGLES}>Singles</option>
+                  <option value={MATCH_TYPES.MIXED_DOUBLES}>Mixed Doubles</option>
                 </select>
               </div>
 

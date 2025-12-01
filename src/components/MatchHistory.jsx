@@ -16,7 +16,8 @@ import {
   getPlayerLimitAlert,
   getPlayerSelectionError,
   formatMatchType,
-  getMatchType
+  getMatchType,
+  getDisplayMatchType
 } from '../utils/matchUtils';
 
 const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTab, players, userRole, userTeamId, setEditingMatch, challenges, onEnterPendingResults, onChallengesChange, addLog }) => {
@@ -666,6 +667,7 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
             <option value="all">All Types</option>
             <option value={MATCH_TYPES.SINGLES}>Singles</option>
             <option value={MATCH_TYPES.DOUBLES}>Doubles</option>
+            <option value={MATCH_TYPES.MIXED_DOUBLES}>Mixed Doubles</option>
           </select>
         </div>
 
@@ -867,7 +869,7 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
                             Level {challenge.acceptedLevel || challenge.proposedLevel}
                           </span>
                           <span className="px-2 py-1 bg-purple-200 text-purple-900 text-xs font-medium rounded">
-                            {formatMatchType(getMatchType(challenge))}
+                            {getDisplayMatchType(challenge, players)}
                           </span>
                           <span className="px-2 py-1 bg-yellow-200 text-yellow-900 text-xs font-bold rounded flex items-center gap-1 animate-pulse">
                             <Clock className="w-3 h-3" />
@@ -996,7 +998,7 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
                             Level {match.level}
                           </span>
                           <span className="px-2 py-1 bg-purple-200 text-purple-900 text-xs font-medium rounded">
-                            {formatMatchType(getMatchType(match))}
+                            {getDisplayMatchType(match, players)}
                           </span>
                         </div>
                         <div className="text-sm text-gray-600">
@@ -1120,7 +1122,7 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
                             Level {challenge.acceptedLevel || challenge.proposedLevel}
                           </span>
                           <span className="px-2 py-1 bg-purple-200 text-purple-900 text-xs font-medium rounded">
-                            {formatMatchType(getMatchType(challenge))}
+                            {getDisplayMatchType(challenge, players)}
                           </span>
                           <span className="px-2 py-1 bg-yellow-200 text-yellow-900 text-xs font-medium rounded flex items-center gap-1">
                             <Clock className="w-3 h-3" />
@@ -1325,7 +1327,7 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
                         Level {match.level}
                       </span>
                       <span className="px-2 py-1 bg-purple-200 text-purple-900 text-xs font-medium rounded">
-                        {formatMatchType(getMatchType(match))}
+                        {getDisplayMatchType(match, players)}
                       </span>
                     </div>
                     <div className="text-sm text-gray-600">
@@ -1631,6 +1633,7 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
           challengeId: selectedMatch.challengeId
         } : null}
         teams={teams}
+        players={players}
         matches={matches}
         onSubmit={handleSubmitResults}
         onClose={handleCloseResultsModal}

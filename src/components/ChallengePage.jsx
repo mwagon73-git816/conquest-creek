@@ -6,6 +6,7 @@ import TeamLogo from './TeamLogo';
 import {
   formatMatchType,
   getMatchType,
+  getDisplayMatchType,
   MATCH_TYPES,
   validatePlayerSelection,
   getPlayerSelectionError,
@@ -407,7 +408,7 @@ const ChallengePage = ({
                   <span className="text-sm font-semibold uppercase tracking-wide">Match Type</span>
                 </div>
                 <p className="text-2xl font-bold text-purple-900">
-                  {formatMatchType(matchType)}
+                  {getDisplayMatchType(challenge, players)}
                 </p>
               </div>
 

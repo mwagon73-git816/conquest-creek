@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { X, Calendar, Users, Trophy, Check, AlertCircle } from 'lucide-react';
 import { formatDate } from '../utils/formatters';
 import TeamLogo from './TeamLogo';
-import { formatMatchType, getMatchType, MATCH_TYPES } from '../utils/matchUtils';
+import { formatMatchType, getMatchType, getDisplayMatchType, MATCH_TYPES } from '../utils/matchUtils';
 
 const ChallengeView = ({
   challenge,
@@ -105,7 +105,7 @@ const ChallengeView = ({
           <div className="flex items-center justify-between">
             {getStatusBadge()}
             <span className="text-sm text-gray-600">
-              {formatMatchType(matchType)} Match
+              {getDisplayMatchType(challenge, players)} Match
             </span>
           </div>
 
