@@ -211,6 +211,63 @@ export const getDisplayMatchType = (match, players, teamId = null) => {
 };
 
 /**
+ * Get effective match type with hybrid detection for filtering purposes
+ * Returns the actual match type constant ('singles', 'doubles', or 'mixed_doubles')
+ * This is used for filtering matches by type, ensuring Mixed Doubles matches are
+ * correctly identified whether explicitly tagged or inferred from player genders.
+ * @param {Object} match - Match or challenge object
+ * @param {Array} players - Array of all players (needed for gender inference)
+ * @param {number} teamId - Team ID to check (optional, defaults to team1)
+ * @returns {string} Match type constant: MATCH_TYPES.SINGLES, MATCH_TYPES.DOUBLES, or MATCH_TYPES.MIXED_DOUBLES
+ */
+export const getEffectiveMatchType = (match, players, teamId = null) => {
+  if (!match) return MATCH_TYPES.DOUBLES;
+
+  // First check if explicitly marked as mixed_doubles (new matches)
+  const explicitMatchType = getMatchType(match);
+  if (explicitMatchType === MATCH_TYPES.MIXED_DOUBLES) {
+    return MATCH_TYPES.MIXED_DOUBLES;
+  }
+
+  // If explicitly singles, return singles
+  if (explicitMatchType === MATCH_TYPES.SINGLES) {
+    return MATCH_TYPES.SINGLES;
+  }
+
+  // For doubles or undefined matchType, check if it's actually mixed doubles
+  // by inferring from player genders (backward compatibility for historical matches)
+
+  // Determine which team's players to check
+  let teamPlayers = null;
+  if (teamId !== null) {
+    // Check the specific team
+    teamPlayers = match.team1Id === teamId ? match.team1Players : match.team2Players;
+  } else {
+    // Default to team1, or use challengerPlayers/challengedPlayers for challenges
+    teamPlayers = match.team1Players || match.challengerPlayers || match.team2Players || match.challengedPlayers;
+  }
+
+  // If we have player data, check genders
+  if (teamPlayers && teamPlayers.length > 0 && players && players.length > 0) {
+    const playerGenders = teamPlayers.map(playerId => {
+      const player = players.find(p => p.id === playerId);
+      return player ? player.gender : null;
+    }).filter(g => g !== null);
+
+    const hasMale = playerGenders.includes('M');
+    const hasFemale = playerGenders.includes('F');
+
+    // If team has both male and female players, it's mixed doubles
+    if (hasMale && hasFemale) {
+      return MATCH_TYPES.MIXED_DOUBLES;
+    }
+  }
+
+  // Default to doubles (not mixed)
+  return MATCH_TYPES.DOUBLES;
+};
+
+/**
  * Get level options based on match type
  * @param {string} matchType - "singles", "doubles", or "mixed_doubles"
  * @returns {Array<string>} Array of level options

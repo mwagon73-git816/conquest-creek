@@ -17,7 +17,8 @@ import {
   getPlayerSelectionError,
   formatMatchType,
   getMatchType,
-  getDisplayMatchType
+  getDisplayMatchType,
+  getEffectiveMatchType
 } from '../utils/matchUtils';
 
 const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTab, players, userRole, userTeamId, setEditingMatch, challenges, onEnterPendingResults, onChallengesChange, addLog }) => {
@@ -453,9 +454,9 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
       if (!matchHasSelectedPlayer) return false;
     }
 
-    // Match type filter
+    // Match type filter (using hybrid detection for Mixed Doubles)
     if (matchTypeFilter !== 'all') {
-      const currentMatchType = getMatchType(match);
+      const currentMatchType = getEffectiveMatchType(match, players);
       if (currentMatchType !== matchTypeFilter) return false;
     }
 
@@ -492,9 +493,9 @@ const MatchHistory = ({ matches, setMatches, teams, isAuthenticated, setActiveTa
       if (!challengeHasSelectedPlayer) return false;
     }
 
-    // Match type filter
+    // Match type filter (using hybrid detection for Mixed Doubles)
     if (matchTypeFilter !== 'all') {
-      const currentMatchType = getMatchType(challenge);
+      const currentMatchType = getEffectiveMatchType(challenge, players);
       if (currentMatchType !== matchTypeFilter) return false;
     }
 

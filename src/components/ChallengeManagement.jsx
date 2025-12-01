@@ -22,6 +22,7 @@ import {
   getPlayerSelectionError,
   formatMatchType,
   getMatchType,
+  getEffectiveMatchType,
   getLevelOptions,
   getDefaultLevel,
   suggestLevel
@@ -252,10 +253,10 @@ export default function ChallengeManagement({
       });
     }
 
-    // Match type filter
+    // Match type filter (using hybrid detection for Mixed Doubles)
     if (matchTypeFilter !== 'all') {
       filteredList = filteredList.filter(challenge => {
-        const challengeMatchType = getMatchType(challenge);
+        const challengeMatchType = getEffectiveMatchType(challenge, players);
         return challengeMatchType === matchTypeFilter;
       });
     }
