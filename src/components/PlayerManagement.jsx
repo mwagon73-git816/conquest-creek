@@ -211,6 +211,9 @@ const PlayerManagement = ({
 
     const playerName = `${playerData.firstName} ${playerData.lastName}`;
 
+    // Variable to track the final players array for saving
+    let playersToSave;
+
     if (editingPlayer) {
       const before = { ...editingPlayer };
       const wasCaptain = editingPlayer.isCaptain;
@@ -254,9 +257,12 @@ const PlayerManagement = ({
       const updatedPlayer = {...editingPlayer, ...playerData, teamId: newTeamId};
       const after = updatedPlayer;
 
-      setPlayers(players.map(p =>
+      // Create the updated players array (will be used for both state and save)
+      playersToSave = players.map(p =>
         p.id === editingPlayer.id ? updatedPlayer : p
-      ));
+      );
+
+      setPlayers(playersToSave);
 
       // Handle captain synchronization
       if (isCaptainNow && !wasCaptain) {
@@ -333,7 +339,8 @@ const PlayerManagement = ({
         ...playerData
       };
 
-      setPlayers([...players, newPlayer]);
+      playersToSave = [...players, newPlayer];
+      setPlayers(playersToSave);
 
       // If player is a captain, create captain record
       if (playerFormData.isCaptain) {
@@ -389,7 +396,7 @@ const PlayerManagement = ({
       }
 
       // Save players with validation
-      const result = await savePlayersWithValidation(players, playersVersion);
+      const result = await savePlayersWithValidation(playersToSave, playersVersion);
 
       if (result.conflict) {
         showError(`Conflict: ${result.message}. Please refresh and try again.`);

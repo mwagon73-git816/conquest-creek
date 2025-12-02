@@ -22,6 +22,7 @@ import TournamentRules from './components/TournamentRules';
 import DataSyncManager from './components/DataSyncManager';
 import ConflictResolutionModal from './components/ConflictResolutionModal';
 import ChallengePage from './components/ChallengePage';
+import BonusAudit from './components/BonusAudit';
 
 const App = () => {
   const navigate = useNavigate();
@@ -1589,6 +1590,15 @@ const App = () => {
                 onRefresh={(newLogs) => setActivityLogs(newLogs)}
               />
             </div>
+          )}
+
+          {activeTab === 'bonus-audit' && (
+            <BonusAudit
+              teams={teams}
+              matches={matches}
+              players={players}
+              bonusEntries={bonusEntries}
+            />
           )}
         </div>
 

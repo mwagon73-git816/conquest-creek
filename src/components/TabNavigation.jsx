@@ -1,5 +1,5 @@
 import React from 'react';
-import { Trophy, Users, Calendar, TrendingUp, UserPlus, Shield, Activity, Image, Swords } from 'lucide-react';
+import { Trophy, Users, Calendar, TrendingUp, UserPlus, Shield, Activity, Image, Swords, ClipboardCheck } from 'lucide-react';
 
 const TabNavigation = ({ activeTab, setActiveTab, userRole, isAuthenticated }) => {
   const allTabs = [
@@ -11,7 +11,8 @@ const TabNavigation = ({ activeTab, setActiveTab, userRole, isAuthenticated }) =
     { id: 'entry', icon: Calendar, label: 'Match Entry', roles: ['director', 'captain', ''] },
     { id: 'matches', icon: TrendingUp, label: 'Matches', roles: ['director', 'captain', ''] },
     { id: 'media', icon: Image, label: 'Media', roles: ['director', 'captain', ''] },
-    { id: 'activity', icon: Activity, label: 'Activity Log', roles: ['director'] }
+    { id: 'activity', icon: Activity, label: 'Activity Log', roles: ['director'] },
+    { id: 'bonus-audit', icon: ClipboardCheck, label: 'Bonus Audit', roles: ['director'] }
   ];
 
   // Filter tabs based on user role
