@@ -999,8 +999,14 @@ const App = () => {
   const calculateBonusPoints = (teamId) => {
     const team = teams.find(t => t.id === teamId);
 
-    const teamMatches = matches.filter(m => m.team1Id === teamId || m.team2Id === teamId);
+    // ONLY include completed matches for bonus calculations
+    const teamMatches = matches.filter(m =>
+      (m.team1Id === teamId || m.team2Id === teamId) &&
+      m.status === 'completed'
+    );
     const matchesByMonth = {};
+
+    console.log(`🎁 Bonus calculation for Team ${teamId}: ${teamMatches.length} completed matches`);
 
     // Tournament months: November 2025, December 2025, January 2026
     const tournamentMonths = [
@@ -1187,11 +1193,20 @@ const App = () => {
 
   const calculateTeamPoints = (teamId) => {
     console.log(`🔍 calculateTeamPoints called with matches.length = ${matches.length}`);
-    const teamMatches = matches.filter(m => m.team1Id === teamId || m.team2Id === teamId);
+
+    // Debug logging - verify pending matches are excluded
+    const allTeamMatches = matches.filter(m => m.team1Id === teamId || m.team2Id === teamId);
+    const completedTeamMatches = allTeamMatches.filter(m => m.status === 'completed');
+    const pendingTeamMatches = allTeamMatches.filter(m => m.status === 'pending');
 
     // Find team name for logging
     const team = teams.find(t => t.id === teamId);
     const teamName = team?.name || `Team ${teamId}`;
+
+    console.log(`Team ${teamName} (${teamId}): ${allTeamMatches.length} total, ${completedTeamMatches.length} completed, ${pendingTeamMatches.length} pending`);
+
+    // ONLY include completed matches
+    const teamMatches = completedTeamMatches;
 
     let matchWinPoints = 0;
     let matchWins = 0;
@@ -1288,6 +1303,7 @@ const App = () => {
     });
 
     console.log(`📊 TOTAL FOR ${teamName}: ${setsWon} sets won, ${gamesWon} games won`);
+    console.log(`📊 MATCH RECORD FOR ${teamName}: ${matchWins} wins, ${matchLosses} losses (${teamMatches.length} completed matches)`);
     console.log(`─`.repeat(60));
 
     const bonusPoints = calculateBonusPoints(teamId);

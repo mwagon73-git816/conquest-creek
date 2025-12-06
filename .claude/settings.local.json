@@ -11,7 +11,11 @@
       "Bash(npm install:*)",
       "Bash(timeout 10 npm run dev:*)",
       "Bash(node -e:*)",
-      "Bash(node verify-leaderboard-calc.js:*)"
+      "Bash(node verify-leaderboard-calc.js:*)",
+      "Bash(node searchMatch.js:*)",
+      "Bash(node analyzeUnmigratedMatches.js:*)",
+      "Bash(node checkSpecificMatch.js:*)",
+      "Bash(node:*)"
     ],
     "deny": [],
     "ask": []
