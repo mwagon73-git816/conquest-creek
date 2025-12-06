@@ -272,8 +272,18 @@ export default function Matches({
   };
 
   const openEditModal = (match) => {
+    console.log('🔧 Opening edit modal for match:', match);
+    console.log('Match data:', {
+      matchId: match.matchId,
+      team1Id: match.team1Id,
+      team2Id: match.team2Id,
+      status: match.status,
+      team1Players: match.team1Players,
+      team2Players: match.team2Players
+    });
     setModalMatch(match);
     setActiveModal('edit');
+    console.log('Modal state updated - activeModal: edit, modalMatch:', match.matchId);
   };
 
   const closeModals = () => {
@@ -864,6 +874,11 @@ export default function Matches({
         />
       )}
 
+      {(() => {
+        console.log('🎬 Render check - activeModal:', activeModal, 'modalMatch:', modalMatch);
+        console.log('Should render EditPendingMatchModal?', activeModal === 'edit' && modalMatch);
+        return null;
+      })()}
       {activeModal === 'edit' && modalMatch && (
         <EditPendingMatchModal
           isOpen={true}

@@ -30,6 +30,8 @@ export default function EditPendingMatchModal({
   teams,
   players
 }) {
+  console.log('🎭 EditPendingMatchModal rendered - isOpen:', isOpen, 'match:', match);
+
   const [formData, setFormData] = useState({
     scheduledDate: '',
     level: '',
@@ -43,7 +45,15 @@ export default function EditPendingMatchModal({
 
   // Initialize form when match changes
   useEffect(() => {
+    console.log('📝 EditPendingMatchModal useEffect - isOpen:', isOpen, 'match:', match);
     if (isOpen && match) {
+      console.log('✅ Initializing form with match data:', {
+        matchId: match.matchId,
+        scheduledDate: match.scheduledDate || match.acceptedDate,
+        level: match.level || match.acceptedLevel,
+        team1Players: match.team1Players,
+        team2Players: match.team2Players
+      });
       setFormData({
         scheduledDate: match.scheduledDate || match.acceptedDate || new Date().toISOString().split('T')[0],
         level: match.level || match.acceptedLevel || '7.0',
@@ -55,11 +65,16 @@ export default function EditPendingMatchModal({
     }
   }, [isOpen, match]);
 
-  if (!match) return null;
+  if (!match) {
+    console.log('❌ EditPendingMatchModal - match is null, returning null');
+    return null;
+  }
 
   const matchType = getMatchType(match);
   const requiredCount = getRequiredPlayerCount(matchType);
   const levelOptions = getLevelOptions(matchType);
+
+  console.log('🔍 Match type info:', { matchType, requiredCount, levelOptions });
 
   // Get roster for a team
   const getTeamRoster = (teamId) => {
@@ -110,12 +125,12 @@ export default function EditPendingMatchModal({
 
     // NTRP validation
     if (formData.team1Players.length === requiredCount) {
-      if (!validateCombinedNTRP(formData.team1Players, formData.level, players)) {
+      if (!validateCombinedNTRP(formData.team1Players, players, formData.level)) {
         errors.team1NTRP = `Combined NTRP exceeds match level (${formData.level})`;
       }
     }
     if (formData.team2Players.length === requiredCount) {
-      if (!validateCombinedNTRP(formData.team2Players, formData.level, players)) {
+      if (!validateCombinedNTRP(formData.team2Players, players, formData.level)) {
         errors.team2NTRP = `Combined NTRP exceeds match level (${formData.level})`;
       }
     }
@@ -167,7 +182,12 @@ export default function EditPendingMatchModal({
     }
   };
 
-  if (!isOpen) return null;
+  if (!isOpen) {
+    console.log('❌ EditPendingMatchModal - isOpen is false, returning null');
+    return null;
+  }
+
+  console.log('✅ EditPendingMatchModal - About to render modal UI');
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -294,12 +314,12 @@ export default function EditPendingMatchModal({
                 </p>
                 {formData.team1Players.length === requiredCount && (
                   <div className={`text-sm font-medium ${
-                    validateCombinedNTRP(formData.team1Players, formData.level, players)
+                    validateCombinedNTRP(formData.team1Players, players, formData.level)
                       ? 'text-green-600'
                       : 'text-red-600'
                   }`}>
                     Combined NTRP: {calculateCombinedNTRP(formData.team1Players, players).toFixed(1)}
-                    {!validateCombinedNTRP(formData.team1Players, formData.level, players) && (
+                    {!validateCombinedNTRP(formData.team1Players, players, formData.level) && (
                       <span className="block text-xs mt-0.5">
                         ⚠️ Exceeds match level ({formData.level})
                       </span>
@@ -350,12 +370,12 @@ export default function EditPendingMatchModal({
                 </p>
                 {formData.team2Players.length === requiredCount && (
                   <div className={`text-sm font-medium ${
-                    validateCombinedNTRP(formData.team2Players, formData.level, players)
+                    validateCombinedNTRP(formData.team2Players, players, formData.level)
                       ? 'text-green-600'
                       : 'text-red-600'
                   }`}>
                     Combined NTRP: {calculateCombinedNTRP(formData.team2Players, players).toFixed(1)}
-                    {!validateCombinedNTRP(formData.team2Players, formData.level, players) && (
+                    {!validateCombinedNTRP(formData.team2Players, players, formData.level) && (
                       <span className="block text-xs mt-0.5">
                         ⚠️ Exceeds match level ({formData.level})
                       </span>
