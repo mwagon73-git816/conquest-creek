@@ -207,11 +207,47 @@ export default function MatchResultsModal({
         resultsFormData.set3Loser || ''
       );
 
+      // Calculate sets won and total games for each team
+      let team1Sets = 0;
+      let team2Sets = 0;
+      let team1Games = 0;
+      let team2Games = 0;
+
+      // Set 1
+      const set1Team1 = parseInt(teamScores.set1Team1) || 0;
+      const set1Team2 = parseInt(teamScores.set1Team2) || 0;
+      team1Games += set1Team1;
+      team2Games += set1Team2;
+      if (set1Team1 > set1Team2) team1Sets++;
+      else if (set1Team2 > set1Team1) team2Sets++;
+
+      // Set 2
+      const set2Team1 = parseInt(teamScores.set2Team1) || 0;
+      const set2Team2 = parseInt(teamScores.set2Team2) || 0;
+      team1Games += set2Team1;
+      team2Games += set2Team2;
+      if (set2Team1 > set2Team2) team1Sets++;
+      else if (set2Team2 > set2Team1) team2Sets++;
+
+      // Set 3 (if exists)
+      if (teamScores.set3Team1 && teamScores.set3Team2) {
+        const set3Team1 = parseInt(teamScores.set3Team1) || 0;
+        const set3Team2 = parseInt(teamScores.set3Team2) || 0;
+        team1Games += set3Team1;
+        team2Games += set3Team2;
+        if (set3Team1 > set3Team2) team1Sets++;
+        else if (set3Team2 > set3Team1) team2Sets++;
+      }
+
       // Create match result data
       const matchResult = {
         winner: resultsFormData.matchWinner,
         ...teamScores,
         set3IsTiebreaker: resultsFormData.set3IsTiebreaker,
+        team1Sets,
+        team2Sets,
+        team1Games,
+        team2Games,
         matchId: match.matchId || generateMatchId(matches || []),
         date: match.acceptedDate || match.scheduledDate || new Date().toISOString().split('T')[0],
         level: match.acceptedLevel || match.proposedLevel || match.level,

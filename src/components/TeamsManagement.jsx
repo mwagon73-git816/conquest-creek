@@ -26,7 +26,11 @@ const TeamsManagement = ({
   teamsVersion,
   saveTeamsWithValidation,
   onUpdateTeam,
-  loginName
+  loginName,
+  onSave,
+  onUnsavedChangesChange,
+  trades,
+  setTrades
 }) => {
   const teamValidation = useTimestampValidation('team');
   const { showSuccess, showError, showInfo } = useNotification();
@@ -37,6 +41,10 @@ const TeamsManagement = ({
   // Inline team name editing state (NO AUTO-SAVE - manual save required)
   const [editingTeamNameId, setEditingTeamNameId] = useState(null);
   const [teamNameText, setTeamNameText] = useState('');
+
+  // Track unsaved changes
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   // ⚠️⚠️⚠️ AUTO-SAVE REMOVED - CATASTROPHIC DATA LOSS RISK ⚠️⚠️⚠️
   // Inline team name editing auto-save REMOVED
@@ -70,6 +78,68 @@ const TeamsManagement = ({
       console.log('📋 Teams loaded with version:', teamsVersion);
     }
   }, [teamsVersion]);
+
+  // Notify parent component when unsaved changes state changes
+  useEffect(() => {
+    if (onUnsavedChangesChange) {
+      onUnsavedChangesChange(hasUnsavedChanges);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasUnsavedChanges]); // Only depend on hasUnsavedChanges, not the callback
+
+  // Warn user before leaving page with unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasUnsavedChanges]);
+
+  // Create wrapped setters that mark data as unsaved
+  const setTeamsWithDirty = (newTeams) => {
+    setTeams(newTeams);
+    setHasUnsavedChanges(true);
+  };
+
+  const setPlayersWithDirty = (newPlayers) => {
+    setPlayers(newPlayers);
+    setHasUnsavedChanges(true);
+  };
+
+  const setCaptainsWithDirty = (newCaptains) => {
+    setCaptains(newCaptains);
+    setHasUnsavedChanges(true);
+  };
+
+  const setTradesWithDirty = (newTrades) => {
+    setTrades(newTrades);
+    setHasUnsavedChanges(true);
+  };
+
+  // Handle save button click
+  const handleSave = async () => {
+    if (!hasUnsavedChanges) {
+      showInfo('No changes to save');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await onSave();
+      setHasUnsavedChanges(false);
+      showSuccess('Team and player data saved successfully!');
+    } catch (error) {
+      console.error('Error saving:', error);
+      showError('Failed to save. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const handleAddNewTeam = () => {
     setShowTeamForm(true);
@@ -523,23 +593,43 @@ const TeamsManagement = ({
       <div className="flex justify-between items-center mb-4">
         <div>
           <h2 className="text-2xl font-bold flex items-center gap-2">
-            <Users className="w-6 h-6" />
+            <Users className="w-6 h-4" />
             Teams Management
+            {hasUnsavedChanges && (
+              <span className="text-orange-500 text-sm font-normal ml-2">*</span>
+            )}
           </h2>
           <TimestampDisplay
             timestamp={teamsVersion}
             className="text-sm text-gray-500 mt-1"
           />
         </div>
-        {isAuthenticated && userRole === 'director' && !showTeamForm && (
-          <button
-            onClick={handleAddNewTeam}
-            className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 flex items-center gap-2"
-          >
-            <Plus className="w-4 h-4" />
-            Add Team
-          </button>
-        )}
+        <div className="flex gap-2">
+          {isAuthenticated && (userRole === 'director' || userRole === 'captain') && (
+            <button
+              onClick={handleSave}
+              disabled={!hasUnsavedChanges || isSaving}
+              className={`flex items-center gap-2 px-4 py-2 rounded transition-colors font-medium ${
+                hasUnsavedChanges
+                  ? 'bg-orange-500 text-white hover:bg-orange-600 animate-pulse'
+                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              }`}
+              title={hasUnsavedChanges ? 'Click to save changes' : 'No changes to save'}
+            >
+              <Save className="w-4 h-4" />
+              {isSaving ? 'Saving...' : hasUnsavedChanges ? 'Save Changes *' : 'Saved'}
+            </button>
+          )}
+          {isAuthenticated && userRole === 'director' && !showTeamForm && (
+            <button
+              onClick={handleAddNewTeam}
+              className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 flex items-center gap-2"
+            >
+              <Plus className="w-4 h-4" />
+              Add Team
+            </button>
+          )}
+        </div>
       </div>
 
       {showTeamForm && (

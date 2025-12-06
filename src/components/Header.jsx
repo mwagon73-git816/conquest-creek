@@ -1,5 +1,4 @@
 import React from 'react';
-import { Save } from 'lucide-react';
 import { APP_VERSION } from '../version';
 import { getSeasonalTheme, getThemeTextColors, getSeasonalMessage } from '../utils/seasonalTheme';
 
@@ -53,10 +52,8 @@ const Header = ({
   isAuthenticated,
   loginName,
   userRole,
-  saveStatus,
   handleLogout,
-  setShowLogin,
-  onManualSave
+  setShowLogin
 }) => {
   const getRoleDisplay = () => {
     if (userRole === 'director') return 'Director';
@@ -106,25 +103,6 @@ const Header = ({
                 {userRole === 'director' && `Director: ${loginName}`}
                 {userRole === 'captain' && `Captain: ${loginName}`}
               </div>
-              
-              {/* Manual Save Button - Available for Directors and Captains */}
-              {(userRole === 'director' || userRole === 'captain') && onManualSave && (
-                <button
-                  onClick={onManualSave}
-                  className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition-colors font-medium shadow-md animate-pulse"
-                  title="Save all changes to Firebase database"
-                >
-                  <Save className="w-4 h-4" />
-                  Save Data
-                </button>
-              )}
-              
-              {/* Save Status */}
-              {saveStatus && (
-                <div className={`text-xs ${textColors.subtitle} ${textColors.badge} bg-opacity-50 px-2 py-1 rounded`}>
-                  {saveStatus}
-                </div>
-              )}
 
               <button
                 onClick={handleLogout}

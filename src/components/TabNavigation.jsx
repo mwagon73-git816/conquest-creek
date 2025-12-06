@@ -8,7 +8,6 @@ const TabNavigation = ({ activeTab, setActiveTab, userRole, isAuthenticated }) =
     { id: 'players', icon: UserPlus, label: 'Players', roles: ['director', ''] },
     { id: 'captains', icon: Shield, label: 'Captains', roles: ['director'] },
     { id: 'challenges', icon: Swords, label: 'Challenges', roles: ['director', 'captain', ''] },
-    { id: 'entry', icon: Calendar, label: 'Match Entry', roles: ['director', 'captain', ''] },
     { id: 'matches', icon: TrendingUp, label: 'Matches', roles: ['director', 'captain', ''] },
     { id: 'media', icon: Image, label: 'Media', roles: ['director', 'captain', ''] },
     { id: 'activity', icon: Activity, label: 'Activity Log', roles: ['director'] },

@@ -201,11 +201,8 @@ const ChallengePage = ({
 
         if (result.alreadyAccepted) {
           alert(`⚠️ Challenge Already Accepted!\n\n${result.message}\n\nRefreshing...`);
-          // Refresh data
-          const latestChallengesData = await tournamentStorage.getChallenges();
-          if (latestChallengesData && onChallengesChange) {
-            onChallengesChange(JSON.parse(latestChallengesData.data));
-          }
+          // REMOVED: Manual refresh - real-time subscription will automatically update
+          // No need to reload from blob storage
           navigate('/challenges');
         } else if (result.notFound) {
           alert(`⚠️ Challenge Not Found!\n\n${result.message}`);

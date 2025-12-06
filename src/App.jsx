@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { RefreshCw, Check } from 'lucide-react';
 import { tournamentStorage } from './services/storage';
+import { subscribeToMatches } from './services/matchService';
 import { createLogEntry, ACTION_TYPES } from './services/activityLogger';
 import { getPendingRedirect, clearRedirectIntent } from './utils/redirectManager';
 import { MATCH_TYPES, getMatchType } from './utils/matchUtils';
@@ -15,9 +16,13 @@ import CaptainManagement from './components/CaptainManagement';
 import ChallengeManagement from './components/ChallengeManagement';
 import MatchEntry from './components/MatchEntry';
 import MatchHistory from './components/MatchHistory';
+import Matches from './components/Matches';
 import MediaGallery from './components/MediaGallery';
 import ActivityLog from './components/ActivityLog';
 import MigrationButton from './components/MigrationButton';
+import ChallengesMigrationTool from './components/ChallengesMigrationTool';
+import MatchesMigrationTool from './components/MatchesMigrationTool';
+import TeamsDataMigrationTool from './components/TeamsDataMigrationTool';
 import TournamentRules from './components/TournamentRules';
 import DataSyncManager from './components/DataSyncManager';
 import ConflictResolutionModal from './components/ConflictResolutionModal';
@@ -38,12 +43,13 @@ const App = () => {
   const [challenges, setChallenges] = useState([]);
   const [activityLogs, setActivityLogs] = useState([]);
   const [activeTab, setActiveTab] = useState('leaderboard');
+  const [unsavedChanges, setUnsavedChanges] = useState({ teams: false, players: false });
   const [loading, setLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
   const [loginName, setLoginName] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
-  const [loginRole, setLoginRole] = useState('director');
+  const [loginRole, setLoginRole] = useState('captain');
   const [userRole, setUserRole] = useState('');
   const [userTeamId, setUserTeamId] = useState(null);
   const [saveStatus, setSaveStatus] = useState('');
@@ -61,6 +67,55 @@ const App = () => {
   const TOURNAMENT_DIRECTORS = [
     { username: 'cctdir', password: 'cct2025$', name: 'Tournament Director', role: 'director' }
   ];
+
+  // Navigation guard - check for unsaved changes before switching tabs
+  const handleTabChange = async (newTab) => {
+    const currentTab = activeTab;
+
+    // Check if current tab has unsaved changes
+    const hasUnsaved = unsavedChanges[currentTab];
+
+    if (hasUnsaved) {
+      const userChoice = window.confirm(
+        'You have unsaved changes. Would you like to save before leaving?\n\n' +
+        'Click OK to save and continue, or Cancel to stay on this page.'
+      );
+
+      if (userChoice) {
+        // User wants to save
+        try {
+          setSaveStatus('Saving...');
+          await handleManualSave();
+          setSaveStatus('Saved!');
+          setTimeout(() => setSaveStatus(''), 2000);
+
+          // Clear unsaved flag for this tab
+          setUnsavedChanges(prev => ({ ...prev, [currentTab]: false }));
+
+          // Navigate to new tab
+          setActiveTab(newTab);
+        } catch (error) {
+          console.error('Error saving:', error);
+          setSaveStatus('Save failed');
+          alert('Failed to save changes. Please try again.');
+          return; // Don't navigate if save failed
+        }
+      }
+      // If user clicks Cancel, stay on current page (do nothing)
+    } else {
+      // No unsaved changes, navigate freely
+      setActiveTab(newTab);
+    }
+  };
+
+  // Memoized callbacks to prevent infinite loops in child components
+  const handleTeamsUnsavedChanges = useCallback((hasChanges) => {
+    setUnsavedChanges(prev => ({ ...prev, teams: hasChanges }));
+  }, []);
+
+  const handlePlayersUnsavedChanges = useCallback((hasChanges) => {
+    setUnsavedChanges(prev => ({ ...prev, players: hasChanges }));
+  }, []);
 
   const addLog = async (action, details, entityId = null, before = null, after = null) => {
     try {
@@ -122,14 +177,36 @@ const App = () => {
           setTeams([]);
           setTrades([]);
         } else {
-          const parsed = JSON.parse(teamsData.data);
-          console.log('Parsed teams data:', {
+          // Handle both old JSON string format and new object format
+          let parsed;
+          const dataContent = teamsData.data;
+
+          if (typeof dataContent === 'string') {
+            // Old format: JSON string
+            console.log('📋 Loading teams data (OLD JSON STRING format)');
+            try {
+              parsed = JSON.parse(dataContent);
+            } catch (error) {
+              console.error('❌ Failed to parse teams JSON string:', error);
+              parsed = { teams: [], players: [], trades: [] };
+            }
+          } else if (typeof dataContent === 'object' && dataContent !== null) {
+            // New format: already an object/map
+            console.log('📋 Loading teams data (NEW OBJECT format)');
+            parsed = dataContent;
+          } else {
+            console.error('❌ Unexpected teams data format:', typeof dataContent);
+            parsed = { teams: [], players: [], trades: [] };
+          }
+
+          console.log('📋 Loaded teams data:', {
             players: parsed.players?.length || 0,
             teams: parsed.teams?.length || 0,
             trades: parsed.trades?.length || 0
           });
 
-          if (parsed.teams) {
+          // Extract teams with bonuses
+          if (parsed.teams && Array.isArray(parsed.teams)) {
             const teamsWithBonuses = parsed.teams.map(team => ({
               ...team,
               bonuses: team.bonuses || {
@@ -139,10 +216,29 @@ const App = () => {
               }
             }));
             setTeams(teamsWithBonuses);
+            console.log('✅ Set teams:', teamsWithBonuses.length);
+          } else {
+            console.warn('⚠️ No teams array found in data');
+            setTeams([]);
           }
 
-          if (parsed.players) setPlayers(parsed.players);
-          if (parsed.trades) setTrades(parsed.trades);
+          // Extract players
+          if (parsed.players && Array.isArray(parsed.players)) {
+            setPlayers(parsed.players);
+            console.log('✅ Set players:', parsed.players.length);
+          } else {
+            console.warn('⚠️ No players array found in data');
+            setPlayers([]);
+          }
+
+          // Extract trades
+          if (parsed.trades && Array.isArray(parsed.trades)) {
+            setTrades(parsed.trades);
+            console.log('✅ Set trades:', parsed.trades.length);
+          } else {
+            console.log('⚪ No trades array found in data (initializing empty)');
+            setTrades([]);
+          }
         }
       } else {
         if (players.length === 0 && teams.length === 0 && trades.length === 0) {
@@ -156,23 +252,8 @@ const App = () => {
         }
       }
 
-      console.log('📥 Fetching matches data from Firebase...');
-      const matchesData = await tournamentStorage.getMatches();
-      console.log('Matches data received:', matchesData ? 'YES' : 'NO/NULL');
-      
-      if (matchesData) {
-        versions.matches = matchesData.updatedAt;
-        const parsedMatches = JSON.parse(matchesData.data);
-        console.log('Parsed matches:', parsedMatches.length);
-        setMatches(parsedMatches);
-      } else {
-        if (matches.length === 0) {
-          console.log('⚪ First load - initializing empty matches');
-          setMatches([]);
-        } else {
-          console.warn('⚠️ Firebase returned no matches data but we have existing state - keeping it');
-        }
-      }
+      // REMOVED: Matches now loaded via real-time subscriptions in MatchHistory.jsx
+      console.log('⏭️ Skipping matches blob loading - using real-time subscriptions');
 
       console.log('📥 Fetching bonuses data from Firebase...');
       const bonusData = await tournamentStorage.getBonuses();
@@ -240,34 +321,9 @@ const App = () => {
         }
       }
 
-      console.log('📥 Fetching challenges data from Firebase...');
-      const challengesData = await tournamentStorage.getChallenges();
-      console.log('Challenges data received:', challengesData ? 'YES' : 'NO/NULL');
-
-      if (challengesData) {
-        versions.challenges = challengesData.updatedAt;
-        const parsedChallenges = JSON.parse(challengesData.data);
-        console.log('Parsed challenges count:', parsedChallenges?.length || 0);
-        console.log('Parsed challenges:', parsedChallenges);
-
-        // Log accepted and completed challenges specifically
-        const acceptedChallenges = parsedChallenges?.filter(c => c.status === 'accepted') || [];
-        const completedChallenges = parsedChallenges?.filter(c => c.status === 'completed') || [];
-        console.log('✅ Challenge breakdown:');
-        console.log(`  - Accepted (pending matches): ${acceptedChallenges.length}`);
-        console.log(`  - Completed: ${completedChallenges.length}`);
-        console.log('Accepted challenges data:', acceptedChallenges);
-        console.log('Completed challenges data:', completedChallenges);
-
-        setChallenges(parsedChallenges);
-      } else {
-        if (challenges.length === 0) {
-          console.log('⚪ First load - initializing empty challenges');
-          setChallenges([]);
-        } else {
-          console.warn('⚠️ Firebase returned no challenges data but we have existing state - keeping it');
-        }
-      }
+      // REMOVED: Challenges now loaded via real-time subscriptions in ChallengeManagement component
+      // No need to load from blob storage - challenges use individual document architecture
+      console.log('⏭️ Skipping challenges blob loading - using real-time subscriptions');
 
       const logsData = await tournamentStorage.getActivityLogs(100);
       if (logsData) setActivityLogs(logsData);
@@ -361,24 +417,8 @@ const App = () => {
       }
       if (teamsResult?.success) newVersions.teams = teamsResult.version;
 
-      console.log('💾 Saving matches to Firebase...');
-      const matchesResult = await tournamentStorage.setMatches(
-        JSON.stringify(matches),
-        dataVersions.matches
-      );
-
-      if (matchesResult && !matchesResult.success && matchesResult.conflict) {
-        console.warn('⚠️ Conflict detected in matches data');
-        setConflictData({
-          ...matchesResult,
-          dataType: 'matches',
-          localData: matches
-        });
-        setSaveStatus('❌ Conflict detected');
-        alert('⚠️ Data Conflict Detected!\n\nAnother user has modified the matches data since you loaded it.\n\nPlease refresh the page to see the latest changes, then try your edit again.');
-        return;
-      }
-      if (matchesResult?.success) newVersions.matches = matchesResult.version;
+      // REMOVED: Matches now auto-save via matchService with individual documents
+      console.log('⏭️ Skipping matches blob save - using auto-save with individual documents');
 
       console.log('💾 Saving bonuses to Firebase...');
       const bonusesResult = await tournamentStorage.setBonuses(
@@ -433,31 +473,9 @@ const App = () => {
       }
       if (captainsResult?.success) newVersions.captains = captainsResult.version;
 
-      console.log('💾 Saving challenges to Firebase...');
-      console.log('Challenges to save:', challenges.length);
-      console.log('Challenge statuses:', challenges.map(c => ({ id: c.id, status: c.status })));
-      const acceptedChallenges = challenges.filter(c => c.status === 'accepted');
-      const completedChallenges = challenges.filter(c => c.status === 'completed');
-      console.log(`  - Accepted (pending): ${acceptedChallenges.length}`);
-      console.log(`  - Completed: ${completedChallenges.length}`);
-
-      const challengesResult = await tournamentStorage.setChallenges(
-        JSON.stringify(challenges),
-        dataVersions.challenges
-      );
-
-      if (challengesResult && !challengesResult.success && challengesResult.conflict) {
-        console.warn('⚠️ Conflict detected in challenges data');
-        setConflictData({
-          ...challengesResult,
-          dataType: 'challenges',
-          localData: challenges
-        });
-        setSaveStatus('❌ Conflict detected');
-        alert('⚠️ Data Conflict Detected!\n\nAnother user has modified the challenges data since you loaded it.\n\nThis could mean someone accepted or modified a challenge.\n\nPlease refresh the page to see the latest changes, then try your edit again.');
-        return;
-      }
-      if (challengesResult?.success) newVersions.challenges = challengesResult.version;
+      // REMOVED: Challenges now auto-save via challengeService
+      // No need to save to blob storage - challenges use individual document architecture
+      console.log('⏭️ Skipping challenges blob save - using auto-save with individual documents');
 
       // Update versions after successful save
       setDataVersions(prev => ({ ...prev, ...newVersions }));
@@ -468,9 +486,9 @@ const App = () => {
       alert('✅ All data saved successfully!\n\nChanges have been saved to the database.\n\n' +
             `Saved:\n` +
             `  • ${matches.length} matches\n` +
-            `  • ${challenges.length} challenges (${acceptedChallenges.length} pending, ${completedChallenges.length} completed)\n` +
             `  • ${teams.length} teams\n` +
-            `  • ${players.length} players`);
+            `  • ${players.length} players\n\n` +
+            `Note: Challenges are now auto-saved and don't require manual saving.`);
     } catch (error) {
       console.error('❌ Error saving:', error);
       setSaveStatus('❌ Save failed');
@@ -533,29 +551,7 @@ const App = () => {
     }
   };
 
-  const saveChallengesWithValidation = async (updatedChallenges, expectedVersion) => {
-    try {
-      const result = await tournamentStorage.saveWithValidation(
-        'challenges',
-        updatedChallenges,
-        expectedVersion || dataVersions.challenges,
-        false
-      );
-
-      if (result.success) {
-        setChallenges(updatedChallenges);
-        setDataVersions(prev => ({ ...prev, challenges: result.version }));
-        return { success: true, version: result.version };
-      } else if (result.conflict) {
-        return { success: false, conflict: true, message: result.message, currentVersion: result.version };
-      } else {
-        return { success: false, message: result.message };
-      }
-    } catch (error) {
-      console.error('Error saving challenges:', error);
-      return { success: false, message: error.message };
-    }
-  };
+  // REMOVED: saveChallengesWithValidation - challenges now auto-save via challengeService
 
   const saveCaptainsWithValidation = async (updatedCaptains, expectedVersion) => {
     try {
@@ -619,6 +615,30 @@ const App = () => {
     };
 
     loadData();
+  }, []);
+
+  // Subscribe to matches from Firestore (replaces blob loading)
+  useEffect(() => {
+    console.log('🔄 App.jsx: Setting up matches subscription...');
+
+    const unsubscribe = subscribeToMatches(
+      (matchesData) => {
+        console.log(`📋 App.jsx: Received ${matchesData.length} matches from Firestore`);
+        const pending = matchesData.filter(m => m.status === 'pending');
+        const completed = matchesData.filter(m => m.status === 'completed');
+        console.log(`📋 App.jsx: Pending: ${pending.length}, Completed: ${completed.length}`);
+        console.log('📋 App.jsx: Setting matches state for leaderboard calculations');
+        setMatches(matchesData);
+      },
+      (error) => {
+        console.error('❌ App.jsx: Failed to load matches:', error);
+      }
+    );
+
+    return () => {
+      console.log('📋 App.jsx: Unsubscribing from matches');
+      unsubscribe();
+    };
   }, []);
 
   // Post-login redirect handling - uses new redirectManager for all protected actions
@@ -729,6 +749,7 @@ const App = () => {
 
         setShowLogin(false);
         setLoginPassword('');
+        setActiveTab('leaderboard'); // Navigate to Leaderboard after login
       } else {
         alert('Invalid username or password.\n\nPlease check your credentials and try again.');
       }
@@ -764,7 +785,7 @@ const App = () => {
 
         setShowLogin(false);
         setLoginPassword('');
-        setActiveTab('entry');
+        setActiveTab('leaderboard'); // Navigate to Leaderboard after login
 
         if (!captain.teamId) {
           alert('Welcome, Captain ' + captain.name + '!\n\n⚠️ You are not currently assigned to a team.\n\nPlease contact the tournament directors to be assigned to a team before you can enter matches.');
@@ -778,6 +799,20 @@ const App = () => {
   };
 
   const handleLogout = async () => {
+    // Check if there are unsaved changes
+    const hasUnsaved = Object.values(unsavedChanges).some(val => val === true);
+
+    if (hasUnsaved) {
+      const userChoice = window.confirm(
+        'You have unsaved changes. If you log out now, these changes will be lost.\n\n' +
+        'Click OK to log out anyway, or Cancel to stay logged in and save your changes.'
+      );
+
+      if (!userChoice) {
+        return; // User cancelled logout
+      }
+    }
+
     const logEntry = createLogEntry(
       ACTION_TYPES.USER_LOGOUT,
       loginName || 'Unknown',
@@ -791,6 +826,9 @@ const App = () => {
 
     // Clear any pending redirects on logout
     clearRedirectIntent();
+
+    // Clear unsaved changes flags
+    setUnsavedChanges({ teams: false, players: false });
 
     setIsAuthenticated(false);
     setLoginName('');
@@ -1148,6 +1186,7 @@ const App = () => {
   };
 
   const calculateTeamPoints = (teamId) => {
+    console.log(`🔍 calculateTeamPoints called with matches.length = ${matches.length}`);
     const teamMatches = matches.filter(m => m.team1Id === teamId || m.team2Id === teamId);
 
     // Find team name for logging
@@ -1386,15 +1425,13 @@ const App = () => {
           isAuthenticated={isAuthenticated}
           loginName={loginName}
           userRole={userRole}
-          saveStatus={saveStatus}
           handleLogout={handleLogout}
           setShowLogin={setShowLogin}
-          onManualSave={handleManualSave}
         />
 
         <TabNavigation
           activeTab={activeTab}
-          setActiveTab={setActiveTab}
+          setActiveTab={handleTabChange}
           userRole={userRole}
           isAuthenticated={isAuthenticated}
         />
@@ -1446,6 +1483,10 @@ const App = () => {
               teamsVersion={dataVersions.teams}
               saveTeamsWithValidation={saveTeamsWithValidation}
               loginName={loginName}
+              onSave={handleManualSave}
+              onUnsavedChangesChange={handleTeamsUnsavedChanges}
+              trades={trades}
+              setTrades={setTrades}
             />
           )}
 
@@ -1467,6 +1508,8 @@ const App = () => {
               savePlayersWithValidation={savePlayersWithValidation}
               loginName={loginName}
               releaseImportLock={releaseImportLockHelper}
+              onSave={handleManualSave}
+              onUnsavedChangesChange={handlePlayersUnsavedChanges}
             />
           )}
 
@@ -1499,63 +1542,22 @@ const App = () => {
               showToast={showToastMessage}
               autoAcceptChallengeId={autoAcceptChallengeId}
               onAutoAcceptHandled={() => setAutoAcceptChallengeId(null)}
-              challengesVersion={dataVersions.challenges}
-              saveChallengesWithValidation={saveChallengesWithValidation}
             />
           )}
 
-          {activeTab === 'entry' && (
-            <MatchEntry
+          {activeTab === 'matches' && (
+            <Matches
               teams={teams}
-              matches={matches}
-              setMatches={setMatches}
-              challenges={challenges}
-              onChallengesChange={setChallenges}
-              isAuthenticated={isAuthenticated}
-              setActiveTab={setActiveTab}
               players={players}
-              captains={captains}
-              onAddPhoto={handleAddPhoto}
-              loginName={loginName}
+              isAuthenticated={isAuthenticated}
               userRole={userRole}
               userTeamId={userTeamId}
-              editingMatch={editingMatch}
-              setEditingMatch={setEditingMatch}
+              loginName={loginName}
               addLog={addLog}
-              matchesVersion={dataVersions.matches}
-              saveMatchesWithValidation={saveMatchesWithValidation}
+              captains={captains}
+              onAddPhoto={handleAddPhoto}
             />
           )}
-
-          {activeTab === 'matches' && (() => {
-            console.log('=== APP.JSX: Rendering MatchHistory ===');
-            console.log('Passing challenges to MatchHistory:', challenges?.length || 0);
-            console.log('Challenges state:', challenges);
-            return (
-              <MatchHistory
-                matches={matches}
-                setMatches={setMatches}
-                teams={teams}
-                isAuthenticated={isAuthenticated}
-                setActiveTab={setActiveTab}
-                players={players}
-                userRole={userRole}
-                userTeamId={userTeamId}
-                setEditingMatch={setEditingMatch}
-                challenges={challenges}
-                onChallengesChange={setChallenges}
-                onEnterPendingResults={(challenge) => {
-                  console.log('=== Enter Pending Results Clicked ===');
-                  console.log('Challenge:', challenge);
-                  // Set editing match with pending challenge data
-                  setEditingMatch({ ...challenge, isPendingMatch: true });
-                  // Switch to entry tab
-                  setActiveTab('entry');
-                }}
-                addLog={addLog}
-              />
-            );
-          })()}
 
           {activeTab === 'media' && (
             <MediaGallery
@@ -1571,6 +1573,27 @@ const App = () => {
 
           {activeTab === 'activity' && (
             <div className="space-y-6">
+              {/* Challenges Firestore Migration - Directors Only */}
+              {userRole === 'director' && (
+                <ChallengesMigrationTool
+                  userRole={userRole}
+                />
+              )}
+
+              {/* Matches Firestore Migration - Directors Only */}
+              {userRole === 'director' && (
+                <MatchesMigrationTool
+                  userRole={userRole}
+                />
+              )}
+
+              {/* Teams Data Format Migration - Directors Only */}
+              {userRole === 'director' && (
+                <TeamsDataMigrationTool
+                  userRole={userRole}
+                />
+              )}
+
               {/* Migration Utility - Directors Only */}
               {userRole === 'director' && (
                 <MigrationButton

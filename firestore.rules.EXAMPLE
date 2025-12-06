@@ -1,0 +1,113 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ========================================
+    // CHALLENGES - Individual Documents (NEW ARCHITECTURE)
+    // ========================================
+    match /challenges/{challengeId} {
+      // Anyone can read challenges (public viewing)
+      allow read: if true;
+
+      // Authenticated users can create challenges
+      allow create: if request.auth != null;
+
+      // Authenticated users can update challenges
+      // (Consider adding more specific rules based on your auth system)
+      allow update: if request.auth != null;
+
+      // Only directors or challenge creator can delete
+      // (Adjust based on your authentication/role system)
+      allow delete: if request.auth != null;
+    }
+
+    // ========================================
+    // MATCHES - Individual Documents (NEW ARCHITECTURE)
+    // ========================================
+    match /matches/{matchId} {
+      // Anyone can read matches (public viewing)
+      allow read: if true;
+
+      // Authenticated users can create matches
+      allow create: if request.auth != null;
+
+      // Authenticated users can update matches (for results entry)
+      allow update: if request.auth != null;
+
+      // Only directors can delete matches
+      allow delete: if request.auth != null;
+    }
+
+    // ========================================
+    // TEAMS - Blob Storage (Keep existing)
+    // ========================================
+    match /teams/{document=**} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // ========================================
+    // MATCHES - Blob Storage (Keep existing)
+    // ========================================
+    match /matches/{document=**} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // ========================================
+    // PLAYERS - Blob Storage (Keep existing)
+    // ========================================
+    match /players/{document=**} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // ========================================
+    // CAPTAINS - Blob Storage (Keep existing)
+    // ========================================
+    match /captains/{document=**} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // ========================================
+    // ACTIVITY LOGS
+    // ========================================
+    match /activity_logs/{logId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update, delete: if false; // Logs should not be modified
+    }
+
+    // ========================================
+    // PHOTOS
+    // ========================================
+    match /photos/{document=**} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // ========================================
+    // BONUSES
+    // ========================================
+    match /bonuses/{document=**} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // ========================================
+    // AUTH (if you're using Firestore for auth)
+    // ========================================
+    match /auth/{document=**} {
+      allow read, write: if request.auth != null;
+    }
+
+    // ========================================
+    // METADATA (for granular storage)
+    // ========================================
+    match /_metadata/{document=**} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+  }
+}

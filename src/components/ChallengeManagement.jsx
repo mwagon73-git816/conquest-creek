@@ -7,7 +7,7 @@ import { tournamentStorage } from '../services/storage';
 import { isSmsEnabled } from '../firebase';
 import TeamLogo from './TeamLogo';
 import { generateChallengeId, generateMatchId } from '../utils/idGenerator';
-import { useTimestampValidation, TimestampDisplay } from '../hooks/useTimestampValidation';
+// REMOVED: useTimestampValidation, TimestampDisplay - no longer needed with real-time subscriptions
 import { useNotification } from '../contexts/NotificationContext';
 import { requireAuth } from '../utils/redirectManager';
 import {
@@ -27,6 +27,13 @@ import {
   getDefaultLevel,
   suggestLevel
 } from '../utils/matchUtils';
+import {
+  createChallenge,
+  updateChallenge,
+  deleteChallenge,
+  acceptChallenge,
+  subscribeToChallenges
+} from '../services/challengeService';
 
 export default function ChallengeManagement({
   teams,
@@ -43,11 +50,10 @@ export default function ChallengeManagement({
   addLog,
   showToast,
   autoAcceptChallengeId,
-  onAutoAcceptHandled,
-  challengesVersion,
-  saveChallengesWithValidation
+  onAutoAcceptHandled
+  // REMOVED: challengesVersion - no longer needed with real-time subscriptions
+  // REMOVED: saveChallengesWithValidation - challenges now auto-save
 }) {
-  const challengeValidation = useTimestampValidation('challenge');
   const { showSuccess, showError, showInfo } = useNotification();
   const location = useLocation();
 
@@ -98,13 +104,27 @@ export default function ChallengeManagement({
   const [isCreating, setIsCreating] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // Record timestamp when challenges data is loaded
+  // Real-time subscription to challenges (replaces old timestamp validation)
   useEffect(() => {
-    if (challengesVersion) {
-      challengeValidation.recordLoad(challengesVersion);
-      console.log('📋 Challenges loaded with version:', challengesVersion);
-    }
-  }, [challengesVersion]);
+    console.log('🔄 Setting up real-time challenges subscription...');
+
+    const unsubscribe = subscribeToChallenges(
+      (updatedChallenges) => {
+        onChallengesChange(updatedChallenges);
+        console.log('📋 Challenges updated via subscription:', updatedChallenges.length);
+      },
+      (error) => {
+        console.error('❌ Challenges subscription error:', error);
+        showError('Failed to load challenges. Please refresh the page.');
+      }
+    );
+
+    // Cleanup subscription on unmount
+    return () => {
+      console.log('🔄 Cleaning up challenges subscription');
+      unsubscribe();
+    };
+  }, []); // Empty deps - subscribe once on mount
 
   // Restore context after login redirect
   useEffect(() => {
@@ -387,71 +407,45 @@ export default function ChallengeManagement({
     // Set loading state
     setIsCreating(true);
 
-    const generatedChallengeId = generateChallengeId(challenges);
-    console.log('🆔 Generated Challenge ID:', generatedChallengeId);
-
-    const newChallenge = {
-      id: Date.now(),
-      challengeId: generatedChallengeId,
-      challengerTeamId: challengerTeamId,
-      matchType: createFormData.matchType,
-      status: 'open',
-      proposedDate: createFormData.proposedDate || null,
-      proposedLevel: createFormData.proposedLevel,
-      challengerPlayers: createFormData.selectedPlayers,
-      combinedNTRP: calculateCombinedNTRP(createFormData.selectedPlayers, createFormData.matchType),
-      createdBy: getUserInfo()?.name || 'Unknown',
-      createdAt: new Date().toISOString(),
-      notes: createFormData.notes
-    };
-
-    const updatedChallenges = [...challenges, newChallenge];
-
-    // Validate and save to Firestore
     try {
-      console.log('💾 Saving challenge to Firestore with timestamp validation...');
-      const currentVersion = await tournamentStorage.getDataVersion('challenges');
-
-      const shouldProceed = await challengeValidation.validateBeforeSave(
-        currentVersion,
-        null,
-        async () => {
-          console.log('🔄 Reloading challenges due to conflict...');
-          const freshData = await tournamentStorage.getChallenges();
-          onChallengesChange(freshData || []);
-          challengeValidation.recordLoad(await tournamentStorage.getDataVersion('challenges'));
-          await tournamentStorage.logConflict('challenge', newChallenge.id, loginName, 'reloaded');
-        }
-      );
-
-      if (!shouldProceed) {
-        console.log('❌ Challenge creation canceled by user');
-        return;
-      }
-
-      const result = await saveChallengesWithValidation(updatedChallenges, challengesVersion);
-
-      if (result.conflict) {
-        showError(`Conflict: ${result.message}. Please refresh and try again.`);
-        await tournamentStorage.logConflict('challenge', newChallenge.id, loginName, 'conflict');
-        setIsCreating(false);
-        return;
-      }
+      // Create challenge using the new service (auto-saves!)
+      const result = await createChallenge({
+        challengerTeamId: challengerTeamId,
+        challengerPlayers: createFormData.selectedPlayers,
+        proposedLevel: createFormData.proposedLevel,
+        matchType: createFormData.matchType,
+        proposedDate: createFormData.proposedDate || null,
+        notes: createFormData.notes,
+        combinedNTRP: calculateCombinedNTRP(createFormData.selectedPlayers, createFormData.matchType)
+      }, getUserInfo()?.name || 'Unknown');
 
       if (!result.success) {
-        showError(`Failed to create challenge: ${result.message || 'Unknown error'}. Please try again.`);
+        showError(`Failed to create challenge: ${result.message || 'Unknown error'}`);
         setIsCreating(false);
         return;
       }
 
-      // Success!
-      onChallengesChange(updatedChallenges);
-      challengeValidation.reset(result.version, loginName);
-      console.log('✅ Challenge saved successfully to Firestore with version:', result.version);
+      // Success! Real-time subscription will update the UI
+      console.log('✅ Challenge created successfully:', result.challenge.challengeId);
 
       // Get team name for success message
       const challengerTeam = teams.find(t => t.id === challengerTeamId);
       showSuccess(`Challenge created successfully! Sent to ${challengerTeam?.name || 'opponent'}.`);
+
+      // Log activity
+      if (addLog) {
+        addLog(
+          ACTION_TYPES.CHALLENGE_CREATED,
+          {
+            challengerTeam: challengerTeam?.name,
+            level: createFormData.proposedLevel,
+            matchType: createFormData.matchType
+          },
+          result.challenge.challengeId,
+          null,
+          result.challenge
+        );
+      }
 
       // Reset form
       setCreateFormData({
@@ -465,10 +459,9 @@ export default function ChallengeManagement({
       setShowCreateForm(false);
       setIsCreating(false);
     } catch (error) {
-      console.error('❌ Error saving challenge to Firestore:', error);
-      showError('Failed to save challenge to database. Please check your connection and try again.');
+      console.error('❌ Error creating challenge:', error);
+      showError('Failed to create challenge. Please check your connection and try again.');
       setIsCreating(false);
-      return;
     }
   };
 
@@ -532,56 +525,35 @@ export default function ChallengeManagement({
     const generatedMatchId = generateMatchId(matches || []);
     console.log('🆔 Generated Match ID for accepted challenge:', generatedMatchId);
 
-    // Use Firestore transaction to accept challenge (prevents race conditions)
-    console.log('🔐 Accepting challenge using Firestore transaction...');
     try {
-      const result = await tournamentStorage.acceptChallengeTransaction(
-        selectedChallenge.id,
-        {
-          challengedTeamId: challengedTeamId,
-          acceptedDate: acceptFormData.acceptedDate,
-          acceptedLevel: acceptFormData.acceptedLevel,
-          challengedPlayers: acceptFormData.selectedPlayers,
-          challengedCombinedNTRP: calculateCombinedNTRP(acceptFormData.selectedPlayers, challengeMatchType),
-          acceptedBy: getUserInfo()?.name || 'Unknown',
-          notes: acceptFormData.notes,
-          matchId: generatedMatchId
-        }
-      );
+      // Accept challenge using the new service (uses transaction!)
+      const result = await acceptChallenge(selectedChallenge.challengeId, {
+        challengedTeamId: challengedTeamId,
+        challengedPlayers: acceptFormData.selectedPlayers,
+        acceptedDate: acceptFormData.acceptedDate,
+        acceptedLevel: acceptFormData.acceptedLevel,
+        challengedCombinedNTRP: calculateCombinedNTRP(acceptFormData.selectedPlayers, challengeMatchType),
+        acceptedBy: getUserInfo()?.name || 'Unknown',
+        notes: acceptFormData.notes,
+        matchId: generatedMatchId
+      });
 
       if (!result.success) {
         // Handle different error types
         if (result.alreadyAccepted) {
-          showError(`Challenge already accepted! ${result.message}. Refreshing challenges list...`, 6000);
-          // Refresh challenges from server
-          const latestChallengesData = await tournamentStorage.getChallenges();
-          if (latestChallengesData) {
-            const latestChallenges = JSON.parse(latestChallengesData.data);
-            onChallengesChange(latestChallenges);
-          }
+          showError(`Challenge already accepted! ${result.message}`, 6000);
         } else if (result.notFound) {
-          showError(`Challenge not found! ${result.message}. Refreshing challenges list...`, 6000);
-          // Refresh challenges from server
-          const latestChallengesData = await tournamentStorage.getChallenges();
-          if (latestChallengesData) {
-            const latestChallenges = JSON.parse(latestChallengesData.data);
-            onChallengesChange(latestChallenges);
-          }
+          showError(`Challenge not found! ${result.message}`, 6000);
         } else {
-          showError(`Failed to accept challenge: ${result.message}. Please try again.`);
+          showError(`Failed to accept challenge: ${result.message}`);
         }
         setIsAccepting(false);
         setShowAcceptForm(false);
         return;
       }
 
-      console.log('✅ Challenge accepted successfully via transaction!');
-
-      // Update local state with the result from transaction
-      const updatedChallenges = challenges.map(c =>
-        c.id === selectedChallenge.id ? result.updatedChallenge : c
-      );
-      onChallengesChange(updatedChallenges);
+      // Success! Real-time subscription will update the UI
+      console.log('✅ Challenge accepted successfully:', result.challenge.challengeId);
 
       // Send SMS notification to challenger captain
       const challengerTeam = teams.find(t => t.id === selectedChallenge.challengerTeamId);
@@ -620,8 +592,8 @@ export default function ChallengeManagement({
 
       showSuccess('Challenge accepted! Match created successfully.');
     } catch (error) {
-      console.error('❌ Error in challenge acceptance:', error);
-      showError('Unexpected error accepting challenge. Please refresh the page and try again.');
+      console.error('❌ Error accepting challenge:', error);
+      showError('Unexpected error accepting challenge. Please try again.');
     } finally {
       setIsAccepting(false);
       setShowAcceptForm(false);
@@ -634,51 +606,35 @@ export default function ChallengeManagement({
       return;
     }
 
-    const updatedChallenges = challenges.filter(c => c.id !== challenge.id);
-
-    // Validate and save to Firestore
     try {
-      console.log('💾 Deleting challenge from Firestore with timestamp validation...');
-      const currentVersion = await tournamentStorage.getDataVersion('challenges');
-
-      const shouldProceed = await challengeValidation.validateBeforeSave(
-        currentVersion,
-        null,
-        async () => {
-          console.log('🔄 Reloading challenges due to conflict...');
-          const freshData = await tournamentStorage.getChallenges();
-          onChallengesChange(freshData || []);
-          challengeValidation.recordLoad(await tournamentStorage.getDataVersion('challenges'));
-          await tournamentStorage.logConflict('challenge', challenge.id, loginName, 'reloaded');
-        }
-      );
-
-      if (!shouldProceed) {
-        console.log('❌ Challenge deletion canceled by user');
-        return;
-      }
-
-      const result = await saveChallengesWithValidation(updatedChallenges, challengesVersion);
-
-      if (result.conflict) {
-        alert(`⚠️ Conflict: ${result.message}`);
-        await tournamentStorage.logConflict('challenge', challenge.id, loginName, 'conflict');
-        return;
-      }
+      // Delete challenge using the new service (auto-updates!)
+      const result = await deleteChallenge(challenge.challengeId);
 
       if (!result.success) {
-        alert(`❌ Delete failed: ${result.message || 'Unknown error'}`);
+        showError(`Failed to delete challenge: ${result.message || 'Unknown error'}`);
         return;
       }
 
-      // Success!
-      onChallengesChange(updatedChallenges);
-      challengeValidation.reset(result.version, loginName);
-      console.log('✅ Challenge deleted successfully from Firestore with version:', result.version);
-      alert('✅ Challenge deleted successfully!');
+      // Success! Real-time subscription will update the UI
+      console.log('✅ Challenge deleted successfully:', challenge.challengeId);
+      showSuccess('Challenge deleted successfully!');
+
+      // Log activity
+      if (addLog) {
+        addLog(
+          ACTION_TYPES.CHALLENGE_DELETED,
+          {
+            challengerTeam: getTeamName(challenge.challengerTeamId),
+            level: challenge.proposedLevel || challenge.acceptedLevel
+          },
+          challenge.challengeId,
+          challenge,
+          null
+        );
+      }
     } catch (error) {
-      console.error('❌ Error deleting challenge from Firestore:', error);
-      alert('❌ Failed to delete challenge from database. Please try again.');
+      console.error('❌ Error deleting challenge:', error);
+      showError('Failed to delete challenge. Please try again.');
     }
   };
 
@@ -726,62 +682,30 @@ export default function ChallengeManagement({
       changes.push('notes');
     }
 
-    // Update challenge
-    const updatedChallenge = {
-      ...editingChallenge,
-      matchType: editFormData.matchType,
-      proposedDate: editFormData.proposedDate || null,
-      proposedLevel: editFormData.proposedLevel,
-      challengerPlayers: editFormData.selectedPlayers,
-      combinedNTRP: calculateCombinedNTRP(editFormData.selectedPlayers, editFormData.matchType),
-      notes: editFormData.notes,
-      lastEditedBy: getUserInfo()?.name || 'Unknown',
-      lastEditedAt: new Date().toISOString()
-    };
-
-    const updatedChallenges = challenges.map(c =>
-      c.id === editingChallenge.id ? updatedChallenge : c
-    );
-
-    // Validate and save to Firestore
     try {
-      console.log('💾 Updating challenge in Firestore with timestamp validation...');
-      const currentVersion = await tournamentStorage.getDataVersion('challenges');
-
-      const shouldProceed = await challengeValidation.validateBeforeSave(
-        currentVersion,
-        null,
-        async () => {
-          console.log('🔄 Reloading challenges due to conflict...');
-          const freshData = await tournamentStorage.getChallenges();
-          onChallengesChange(freshData || []);
-          challengeValidation.recordLoad(await tournamentStorage.getDataVersion('challenges'));
-          await tournamentStorage.logConflict('challenge', editingChallenge.id, loginName, 'reloaded');
-        }
+      // Update challenge using the new service (auto-saves!)
+      const result = await updateChallenge(
+        editingChallenge.challengeId,
+        {
+          matchType: editFormData.matchType,
+          proposedDate: editFormData.proposedDate || null,
+          proposedLevel: editFormData.proposedLevel,
+          challengerPlayers: editFormData.selectedPlayers,
+          combinedNTRP: calculateCombinedNTRP(editFormData.selectedPlayers, editFormData.matchType),
+          notes: editFormData.notes,
+          lastEditedBy: getUserInfo()?.name || 'Unknown',
+          lastEditedAt: new Date().toISOString()
+        },
+        getUserInfo()?.name || 'Unknown'
       );
-
-      if (!shouldProceed) {
-        console.log('❌ Challenge edit canceled by user');
-        return;
-      }
-
-      const result = await saveChallengesWithValidation(updatedChallenges, challengesVersion);
-
-      if (result.conflict) {
-        alert(`⚠️ Conflict: ${result.message}`);
-        await tournamentStorage.logConflict('challenge', editingChallenge.id, loginName, 'conflict');
-        return;
-      }
 
       if (!result.success) {
         alert(`❌ Update failed: ${result.message || 'Unknown error'}`);
         return;
       }
 
-      // Success!
-      onChallengesChange(updatedChallenges);
-      challengeValidation.reset(result.version, loginName);
-      console.log('✅ Challenge updated successfully in Firestore with version:', result.version);
+      // Success! Real-time subscription will update the UI
+      console.log('✅ Challenge updated successfully:', editingChallenge.challengeId);
 
       // Log the edit activity
       if (addLog && changes.length > 0) {
@@ -792,16 +716,23 @@ export default function ChallengeManagement({
             level: editFormData.proposedLevel,
             changesSummary: `Updated ${changes.join(', ')}`
           },
-          editingChallenge.id,
+          editingChallenge.challengeId,
           editingChallenge,
-          updatedChallenge
+          {
+            ...editingChallenge,
+            matchType: editFormData.matchType,
+            proposedDate: editFormData.proposedDate || null,
+            proposedLevel: editFormData.proposedLevel,
+            challengerPlayers: editFormData.selectedPlayers,
+            notes: editFormData.notes
+          }
         );
       }
 
       alert('✅ Challenge updated successfully!');
     } catch (error) {
-      console.error('❌ Error updating challenge in Firestore:', error);
-      alert('❌ Failed to update challenge in database. Please try again.');
+      console.error('❌ Error updating challenge:', error);
+      alert('❌ Failed to update challenge. Please try again.');
       return;
     }
 
@@ -922,10 +853,7 @@ export default function ChallengeManagement({
               : 'View open challenges from teams'
             }
           </p>
-          <TimestampDisplay
-            timestamp={challengesVersion}
-            className="text-sm text-gray-500 mt-1"
-          />
+          {/* REMOVED: TimestampDisplay - using real-time subscriptions now */}
         </div>
 
         {canCreateChallenge() && !showCreateForm && (
