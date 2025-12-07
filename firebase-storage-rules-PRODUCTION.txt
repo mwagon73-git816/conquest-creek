@@ -1,0 +1,38 @@
+// ✅ PRODUCTION STORAGE RULES
+// Path-based security for Conquest of the Creek tournament app
+// Since the app uses custom authentication (not Firebase Auth),
+// these rules don't rely on request.auth
+
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Photos directory - for match photos
+    match /photos/{filename} {
+      // Anyone can view photos
+      allow read: if true;
+
+      // Only allow image uploads
+      allow write: if filename.matches('.*\\.(jpg|jpeg|png|gif|JPG|JPEG|PNG|GIF)$');
+
+      // Prevent deletion via web app (manual deletion only)
+      allow delete: if false;
+    }
+
+    // Team logos directory
+    match /logos/{filename} {
+      // Anyone can view logos
+      allow read: if true;
+
+      // Only allow image uploads
+      allow write: if filename.matches('.*\\.(jpg|jpeg|png|gif|JPG|JPEG|PNG|GIF)$');
+
+      // Prevent deletion via web app
+      allow delete: if false;
+    }
+
+    // Block all other paths
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

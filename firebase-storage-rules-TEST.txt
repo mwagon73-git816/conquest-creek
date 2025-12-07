@@ -1,0 +1,13 @@
+// ⚠️ TEMPORARY TEST RULES - FOR DEBUGGING ONLY ⚠️
+// This allows ANYONE to upload/read/delete files
+// Use this ONLY to confirm that the issue is with rules
+// DO NOT leave these rules in production!
+
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if true;
+    }
+  }
+}

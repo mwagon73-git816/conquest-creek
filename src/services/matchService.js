@@ -60,8 +60,13 @@ export const createMatch = async (matchData, createdBy = 'Unknown') => {
     const matchId = matchData.matchId || generateMatchId();
     const docRef = doc(db, COLLECTION, matchId);
 
+    // Remove undefined values - Firestore doesn't accept them
+    const cleanMatchData = Object.fromEntries(
+      Object.entries(matchData).filter(([_, value]) => value !== undefined)
+    );
+
     const match = {
-      ...matchData,
+      ...cleanMatchData,
       matchId,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),

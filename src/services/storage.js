@@ -78,16 +78,73 @@ export const imageStorage = {
    */
   async uploadImage(base64Data, path) {
     try {
+      console.log('📤 FIREBASE STORAGE UPLOAD DEBUG');
+      console.log('═'.repeat(60));
+
+      // Check Firebase Storage configuration
+      console.log('🔧 Storage Configuration:');
+      console.log('  - App Name:', firebaseStorage.app.name);
+      console.log('  - Storage Bucket:', firebaseStorage.app.options.storageBucket);
+      console.log('  - Project ID:', firebaseStorage.app.options.projectId);
+      console.log('  - Upload Path:', path);
+
+      // Check authentication status (need to import auth)
+      // For now, log that we need to check auth
+      console.log('⚠️  Auth check needed - user must be authenticated');
+      console.log('   To verify, check: firebase.auth().currentUser');
+
+      console.log('═'.repeat(60));
+
       const storageRef = ref(firebaseStorage, path);
+
+      console.log('🚀 Starting upload to Firebase Storage...');
 
       // Upload base64 string to Storage
       const snapshot = await uploadString(storageRef, base64Data, 'data_url');
 
+      console.log('✅ Upload successful!');
+
       // Get and return the download URL
       const downloadURL = await getDownloadURL(snapshot.ref);
+
+      console.log('🔗 Download URL:', downloadURL);
+      console.log('═'.repeat(60));
+
       return downloadURL;
     } catch (error) {
-      console.error('Error uploading image to Storage:', error);
+      console.error('❌ FIREBASE STORAGE UPLOAD ERROR');
+      console.error('═'.repeat(60));
+      console.error('Error Code:', error.code);
+      console.error('Error Message:', error.message);
+      console.error('Full Error:', error);
+
+      // Provide helpful debugging based on error code
+      if (error.code === 'storage/unauthorized') {
+        console.error('');
+        console.error('🔐 PERMISSION DENIED - Troubleshooting Steps:');
+        console.error('');
+        console.error('1. CHECK USER AUTHENTICATION:');
+        console.error('   - Open browser console');
+        console.error('   - Run: firebase.auth().currentUser');
+        console.error('   - Should show user object, NOT null');
+        console.error('');
+        console.error('2. CHECK STORAGE RULES IN FIREBASE CONSOLE:');
+        console.error('   - Go to: https://console.firebase.google.com');
+        console.error('   - Select Project:', firebaseStorage.app.options.projectId);
+        console.error('   - Navigate to: Storage → Rules');
+        console.error('   - Check if rules allow write access');
+        console.error('');
+        console.error('3. VERIFY CORRECT FIREBASE PROJECT:');
+        console.error('   - Current Bucket:', firebaseStorage.app.options.storageBucket);
+        console.error('   - Current Project:', firebaseStorage.app.options.projectId);
+        console.error('   - Make sure rules are updated in THIS project');
+        console.error('');
+        console.error('4. TRY SIMPLE TEST RULE (TEMPORARILY):');
+        console.error('   allow read, write: if request.auth != null;');
+        console.error('');
+      }
+
+      console.error('═'.repeat(60));
       throw error;
     }
   },

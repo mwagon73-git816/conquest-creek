@@ -37,7 +37,15 @@ export const validatePlayerSelection = (selectedPlayers, matchType = MATCH_TYPES
  * @returns {boolean} True if team has exactly 1 male and 1 female player
  */
 export const validateMixedDoublesGenders = (selectedPlayerIds, players) => {
-  if (!selectedPlayerIds || selectedPlayerIds.length !== 2) return false;
+  // Defensive coding: validate input parameters
+  if (!selectedPlayerIds || !Array.isArray(selectedPlayerIds) || selectedPlayerIds.length !== 2) {
+    return false;
+  }
+
+  if (!players || !Array.isArray(players)) {
+    console.error('validateMixedDoublesGenders: players must be an array', players);
+    return false;
+  }
 
   const player1 = players.find(p => p.id === selectedPlayerIds[0]);
   const player2 = players.find(p => p.id === selectedPlayerIds[1]);
@@ -61,6 +69,17 @@ export const validateMixedDoublesGenders = (selectedPlayerIds, players) => {
  * @returns {number} Combined NTRP rating
  */
 export const calculateCombinedNTRP = (selectedPlayerIds, players, matchType = MATCH_TYPES.DOUBLES) => {
+  // Defensive coding: validate input parameters
+  if (!selectedPlayerIds || !Array.isArray(selectedPlayerIds)) {
+    console.error('calculateCombinedNTRP: selectedPlayerIds must be an array', selectedPlayerIds);
+    return 0;
+  }
+
+  if (!players || !Array.isArray(players)) {
+    console.error('calculateCombinedNTRP: players must be an array', players);
+    return 0;
+  }
+
   const requiredCount = getRequiredPlayerCount(matchType);
 
   if (selectedPlayerIds.length !== requiredCount) return 0;
@@ -88,6 +107,22 @@ export const calculateCombinedNTRP = (selectedPlayerIds, players, matchType = MA
  * @returns {boolean} True if valid, false otherwise
  */
 export const validateCombinedNTRP = (selectedPlayers, players, matchLevel, matchType = MATCH_TYPES.DOUBLES) => {
+  // Defensive coding: validate input parameters
+  if (!selectedPlayers || !Array.isArray(selectedPlayers)) {
+    console.error('validateCombinedNTRP: selectedPlayers must be an array', selectedPlayers);
+    return false;
+  }
+
+  if (!players || !Array.isArray(players)) {
+    console.error('validateCombinedNTRP: players must be an array', players);
+    return false;
+  }
+
+  if (!matchLevel) {
+    console.error('validateCombinedNTRP: matchLevel is required', matchLevel);
+    return false;
+  }
+
   const requiredCount = getRequiredPlayerCount(matchType);
   if (selectedPlayers.length !== requiredCount) return false;
 
