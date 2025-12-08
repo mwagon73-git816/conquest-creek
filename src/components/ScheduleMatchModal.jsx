@@ -131,12 +131,12 @@ export default function ScheduleMatchModal({
 
     // NTRP validation
     if (formData.team1Players.length === requiredCount) {
-      if (!validateCombinedNTRP(formData.team1Players, formData.level, players)) {
+      if (!validateCombinedNTRP(formData.team1Players, players, formData.level, formData.matchType)) {
         errors.team1NTRP = `Combined NTRP exceeds match level (${formData.level})`;
       }
     }
     if (formData.team2Players.length === requiredCount) {
-      if (!validateCombinedNTRP(formData.team2Players, formData.level, players)) {
+      if (!validateCombinedNTRP(formData.team2Players, players, formData.level, formData.matchType)) {
         errors.team2NTRP = `Combined NTRP exceeds match level (${formData.level})`;
       }
     }
@@ -178,8 +178,8 @@ export default function ScheduleMatchModal({
         level: formData.level,
         team1Players: formData.team1Players,
         team2Players: formData.team2Players,
-        team1CombinedNTRP: calculateCombinedNTRP(formData.team1Players, players),
-        team2CombinedNTRP: calculateCombinedNTRP(formData.team2Players, players),
+        team1CombinedNTRP: calculateCombinedNTRP(formData.team1Players, players, formData.matchType),
+        team2CombinedNTRP: calculateCombinedNTRP(formData.team2Players, players, formData.matchType),
         notes: formData.notes,
         status: 'pending'
       });
@@ -363,12 +363,12 @@ export default function ScheduleMatchModal({
                   </p>
                   {formData.team1Players.length === requiredCount && (
                     <div className={`text-sm font-medium ${
-                      validateCombinedNTRP(formData.team1Players, formData.level, players)
+                      validateCombinedNTRP(formData.team1Players, players, formData.level, formData.matchType)
                         ? 'text-green-600'
                         : 'text-red-600'
                     }`}>
-                      Combined NTRP: {calculateCombinedNTRP(formData.team1Players, players).toFixed(1)}
-                      {!validateCombinedNTRP(formData.team1Players, formData.level, players) && (
+                      Combined NTRP: {calculateCombinedNTRP(formData.team1Players, players, formData.matchType).toFixed(1)}
+                      {!validateCombinedNTRP(formData.team1Players, players, formData.level, formData.matchType) && (
                         <span className="block text-xs mt-0.5">
                           ⚠️ Exceeds match level ({formData.level})
                         </span>
@@ -419,12 +419,12 @@ export default function ScheduleMatchModal({
                   </p>
                   {formData.team2Players.length === requiredCount && (
                     <div className={`text-sm font-medium ${
-                      validateCombinedNTRP(formData.team2Players, formData.level, players)
+                      validateCombinedNTRP(formData.team2Players, players, formData.level, formData.matchType)
                         ? 'text-green-600'
                         : 'text-red-600'
                     }`}>
-                      Combined NTRP: {calculateCombinedNTRP(formData.team2Players, players).toFixed(1)}
-                      {!validateCombinedNTRP(formData.team2Players, formData.level, players) && (
+                      Combined NTRP: {calculateCombinedNTRP(formData.team2Players, players, formData.matchType).toFixed(1)}
+                      {!validateCombinedNTRP(formData.team2Players, players, formData.level, formData.matchType) && (
                         <span className="block text-xs mt-0.5">
                           ⚠️ Exceeds match level ({formData.level})
                         </span>
