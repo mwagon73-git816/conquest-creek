@@ -17,6 +17,21 @@ const Leaderboard = ({ teams, getLeaderboard, photos, isAuthenticated, onDeleteP
     }));
   };
 
+  // Calculate win percentage for a team
+  const calculateWinPercentage = (team) => {
+    const totalGames = team.matchWins + team.matchLosses;
+    if (totalGames === 0) return 0;
+    return (team.matchWins / totalGames) * 100;
+  };
+
+  // Format win percentage for display
+  const formatWinPercentage = (team) => {
+    const totalGames = team.matchWins + team.matchLosses;
+    if (totalGames === 0) return '---';
+    const percentage = calculateWinPercentage(team);
+    return `${percentage.toFixed(1)}%`;
+  };
+
   // Sort the display based on current sort column/direction
   const getSortedLeaderboard = () => {
     const leaderboardWithRanks = getLeaderboardWithRanks();
@@ -36,6 +51,10 @@ const Leaderboard = ({ teams, getLeaderboard, photos, isAuthenticated, onDeleteP
         case 'wins':
           aValue = a.matchWins;
           bValue = b.matchWins;
+          break;
+        case 'winPct':
+          aValue = calculateWinPercentage(a);
+          bValue = calculateWinPercentage(b);
           break;
         case 'winPoints':
           aValue = a.matchWinPoints;
@@ -146,6 +165,7 @@ const Leaderboard = ({ teams, getLeaderboard, photos, isAuthenticated, onDeleteP
               <SortableHeader column="team" label="Team" align="left" />
               <SortableHeader column="matches" label="Matches" />
               <SortableHeader column="wins" label="W-L" />
+              <SortableHeader column="winPct" label="Win Pct" />
               <SortableHeader column="winPoints" label="Win Pts" />
               <SortableHeader column="bonus" label="Bonus" />
               <SortableHeader column="totalPoints" label="Total Pts" />
@@ -168,6 +188,7 @@ const Leaderboard = ({ teams, getLeaderboard, photos, isAuthenticated, onDeleteP
                 </td>
                 <td className="text-center p-2">{team.matchesPlayed}</td>
                 <td className="text-center p-2">{team.matchWins}-{team.matchLosses}</td>
+                <td className="text-center p-2 font-semibold text-blue-700">{formatWinPercentage(team)}</td>
                 <td className="text-center p-2 font-semibold">{team.matchWinPoints}</td>
                 <td className="text-center p-2 text-sm">
                   {formatNTRP(team.cappedBonus)}

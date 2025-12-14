@@ -82,19 +82,54 @@ export const calculateCombinedNTRP = (selectedPlayerIds, players, matchType = MA
 
   const requiredCount = getRequiredPlayerCount(matchType);
 
-  if (selectedPlayerIds.length !== requiredCount) return 0;
+  console.log('🔢 calculateCombinedNTRP:', {
+    matchType,
+    requiredCount,
+    selectedPlayerCount: selectedPlayerIds.length,
+    selectedPlayerIds,
+    playersCount: players.length
+  });
+
+  if (selectedPlayerIds.length !== requiredCount) {
+    console.warn(`⚠️ Player count mismatch: expected ${requiredCount}, got ${selectedPlayerIds.length} for ${matchType}`);
+    return 0;
+  }
 
   if (matchType === MATCH_TYPES.SINGLES) {
     const player = players.find(p => p.id === selectedPlayerIds[0]);
-    return player ? parseFloat(player.ntrpRating) : 0;
+    if (!player) {
+      console.error('❌ Player not found:', selectedPlayerIds[0]);
+      return 0;
+    }
+    const rating = parseFloat(player.ntrpRating);
+    console.log('✅ Singles NTRP:', {
+      playerId: player.id,
+      playerName: `${player.firstName} ${player.lastName}`,
+      ntrpRating: player.ntrpRating,
+      parsed: rating
+    });
+    return rating;
   } else {
     // Doubles or Mixed Doubles
     const player1 = players.find(p => p.id === selectedPlayerIds[0]);
     const player2 = players.find(p => p.id === selectedPlayerIds[1]);
 
-    if (!player1 || !player2) return 0;
+    if (!player1 || !player2) {
+      console.error('❌ Players not found:', { player1: !!player1, player2: !!player2, selectedPlayerIds });
+      return 0;
+    }
 
-    return parseFloat(player1.ntrpRating) + parseFloat(player2.ntrpRating);
+    const rating1 = parseFloat(player1.ntrpRating);
+    const rating2 = parseFloat(player2.ntrpRating);
+    const combined = rating1 + rating2;
+
+    console.log('✅ Doubles/Mixed NTRP:', {
+      player1: { id: player1.id, name: `${player1.firstName} ${player1.lastName}`, ntrpRating: player1.ntrpRating, parsed: rating1 },
+      player2: { id: player2.id, name: `${player2.firstName} ${player2.lastName}`, ntrpRating: player2.ntrpRating, parsed: rating2 },
+      combined
+    });
+
+    return combined;
   }
 };
 
@@ -124,10 +159,24 @@ export const validateCombinedNTRP = (selectedPlayers, players, matchLevel, match
   }
 
   const requiredCount = getRequiredPlayerCount(matchType);
-  if (selectedPlayers.length !== requiredCount) return false;
+  if (selectedPlayers.length !== requiredCount) {
+    console.warn(`⚠️ validateCombinedNTRP: Player count mismatch for ${matchType}`);
+    return false;
+  }
 
   const combinedRating = calculateCombinedNTRP(selectedPlayers, players, matchType);
-  return combinedRating <= parseFloat(matchLevel);
+  const maxLevel = parseFloat(matchLevel);
+  const isValid = combinedRating <= maxLevel;
+
+  console.log('✔️ validateCombinedNTRP:', {
+    matchType,
+    combinedRating,
+    matchLevel: maxLevel,
+    isValid,
+    difference: combinedRating - maxLevel
+  });
+
+  return isValid;
 };
 
 /**
