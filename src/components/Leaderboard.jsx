@@ -60,9 +60,17 @@ const Leaderboard = ({ teams, getLeaderboard, photos, isAuthenticated, onDeleteP
           aValue = a.matchWinPoints;
           bValue = b.matchWinPoints;
           break;
-        case 'bonus':
-          aValue = a.cappedBonus;
-          bValue = b.cappedBonus;
+        case 'totalBonus':
+          aValue = a.bonusPoints || 0;
+          bValue = b.bonusPoints || 0;
+          break;
+        case 'bonusApplied':
+          aValue = a.cappedBonus || 0;
+          bValue = b.cappedBonus || 0;
+          break;
+        case 'unusedBonus':
+          aValue = (a.bonusPoints || 0) - (a.cappedBonus || 0);
+          bValue = (b.bonusPoints || 0) - (b.cappedBonus || 0);
           break;
         case 'totalPoints':
           aValue = a.totalPoints;
@@ -167,7 +175,9 @@ const Leaderboard = ({ teams, getLeaderboard, photos, isAuthenticated, onDeleteP
               <SortableHeader column="wins" label="W-L" />
               <SortableHeader column="winPct" label="Win Pct" />
               <SortableHeader column="winPoints" label="Win Pts" />
-              <SortableHeader column="bonus" label="Bonus" />
+              <SortableHeader column="totalBonus" label="Total Bonus" />
+              <SortableHeader column="bonusApplied" label="Bonus Applied" />
+              <SortableHeader column="unusedBonus" label="Unused Bonus" />
               <SortableHeader column="totalPoints" label="Total Pts" />
               <SortableHeader column="sets" label="Sets" />
               <SortableHeader column="games" label="Games" />
@@ -190,8 +200,14 @@ const Leaderboard = ({ teams, getLeaderboard, photos, isAuthenticated, onDeleteP
                 <td className="text-center p-2">{team.matchWins}-{team.matchLosses}</td>
                 <td className="text-center p-2 font-semibold text-blue-700">{formatWinPercentage(team)}</td>
                 <td className="text-center p-2 font-semibold">{team.matchWinPoints}</td>
-                <td className="text-center p-2 text-sm">
-                  {formatNTRP(team.cappedBonus)}
+                <td className="text-center p-2 text-sm font-semibold text-purple-700">
+                  {formatNTRP(team.bonusPoints || 0)}
+                </td>
+                <td className="text-center p-2 text-sm font-semibold text-green-700">
+                  {formatNTRP(team.cappedBonus || 0)}
+                </td>
+                <td className="text-center p-2 text-sm font-semibold text-orange-600">
+                  {formatNTRP((team.bonusPoints || 0) - (team.cappedBonus || 0))}
                 </td>
                 <td className="text-center p-2 font-bold text-lg text-blue-600">{formatNTRP(team.totalPoints)}</td>
                 <td className="text-center p-2 text-sm text-gray-600">{team.setsWon}</td>
