@@ -14,16 +14,16 @@ const DataSyncManager = ({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showSessionWarning, setShowSessionWarning] = useState(false);
 
-  // Update activity every 60 seconds
+  // Update activity every 60 seconds for ALL authenticated users
   useEffect(() => {
-    if (isAuthenticated && userRole === 'director' && loginName) {
+    if (isAuthenticated && loginName) {
       const interval = setInterval(() => {
         onUpdateActivity();
       }, 60000); // Every 60 seconds
 
       return () => clearInterval(interval);
     }
-  }, [isAuthenticated, userRole, loginName, onUpdateActivity]);
+  }, [isAuthenticated, loginName, onUpdateActivity]);
 
   // Check for other active directors
   useEffect(() => {

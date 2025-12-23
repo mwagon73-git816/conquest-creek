@@ -216,13 +216,14 @@ export const tournamentStorage = {
   },
 
   async getAuthSession() {
-    // FIXED: Use localStorage instead of Firestore to prevent session leakage
-    // Each browser maintains its own isolated session
+    // FIXED: Use sessionStorage instead of localStorage to auto-clear on browser close
+    // Each browser tab maintains its own isolated session that clears when browser closes
     try {
-      const sessionData = localStorage.getItem('cct_auth_session');
+      const sessionData = sessionStorage.getItem('cct_auth_session');
       if (sessionData) {
-        // Return format compatible with existing code
-        return { data: sessionData };
+        // Parse and return the session object directly
+        const session = JSON.parse(sessionData);
+        return session;
       }
       return null;
     } catch (error) {
@@ -232,9 +233,14 @@ export const tournamentStorage = {
   },
 
   async setAuthSession(session) {
-    // FIXED: Use localStorage instead of Firestore to prevent session leakage
+    // FIXED: Use sessionStorage instead of localStorage to auto-clear on browser close
+    // Session parameter should be an object (not pre-stringified)
     try {
-      localStorage.setItem('cct_auth_session', JSON.stringify(session));
+      // Add lastActivity timestamp if not present
+      if (!session.lastActivity) {
+        session.lastActivity = new Date().toISOString();
+      }
+      sessionStorage.setItem('cct_auth_session', JSON.stringify(session));
       return { success: true };
     } catch (error) {
       console.error('Error setting auth session:', error);
@@ -243,13 +249,29 @@ export const tournamentStorage = {
   },
 
   async deleteAuthSession() {
-    // FIXED: Use localStorage instead of Firestore to prevent session leakage
+    // FIXED: Use sessionStorage instead of localStorage to auto-clear on browser close
     try {
-      localStorage.removeItem('cct_auth_session');
+      sessionStorage.removeItem('cct_auth_session');
       return true;
     } catch (error) {
       console.error('Error deleting auth session:', error);
       throw error;
+    }
+  },
+
+  async updateSessionActivity() {
+    // Update the lastActivity timestamp without changing other session data
+    try {
+      const session = await this.getAuthSession();
+      if (session) {
+        session.lastActivity = new Date().toISOString();
+        sessionStorage.setItem('cct_auth_session', JSON.stringify(session));
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Error updating session activity:', error);
+      return false;
     }
   },
 

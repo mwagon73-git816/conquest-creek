@@ -63,6 +63,8 @@ const App = () => {
   const [importLock, setImportLock] = useState(null);
   const [lastDataLoad, setLastDataLoad] = useState(null);
   const [conflictData, setConflictData] = useState(null);
+  const [showInactivityWarning, setShowInactivityWarning] = useState(false);
+  const [inactivityTimeLeft, setInactivityTimeLeft] = useState(0);
 
   const TOURNAMENT_DIRECTORS = [
     { username: 'cctdir', password: 'cct2025$', name: 'Tournament Director', role: 'director' }
@@ -582,23 +584,32 @@ const App = () => {
       try {
         await loadAllData();
 
-        const authData = await tournamentStorage.getAuthSession();
-        if (authData) {
-          const session = JSON.parse(authData.data);
+        const session = await tournamentStorage.getAuthSession();
+        if (session) {
           const now = Date.now();
           const expiresAt = new Date(session.expiresAt).getTime();
+          const lastActivity = session.lastActivity ? new Date(session.lastActivity).getTime() : now;
+          const inactivityLimit = 30 * 60 * 1000; // 30 minutes in milliseconds
 
-          if (now < expiresAt) {
+          // Check both 24-hour expiry and 30-minute inactivity
+          const isExpired = now >= expiresAt;
+          const isInactive = (now - lastActivity) > inactivityLimit;
+
+          if (isExpired || isInactive) {
+            console.log('Session expired or inactive, logging out:', { isExpired, isInactive });
+            await tournamentStorage.deleteAuthSession();
+          } else {
+            // Restore session
             setIsAuthenticated(true);
             setLoginName(session.name);
             setUserRole(session.role || 'director');
             setUserTeamId(session.teamId || null);
 
-            if (session.role === 'director') {
-              await tournamentStorage.setActiveSession(session.name, 'director');
-            }
-          } else {
-            tournamentStorage.deleteAuthSession();
+            // Register ALL users (directors and captains) in active sessions
+            await tournamentStorage.setActiveSession(session.name, session.role || 'director');
+
+            // Update activity timestamp to mark session as active
+            await tournamentStorage.updateSessionActivity();
           }
         }
 
@@ -641,6 +652,21 @@ const App = () => {
     };
   }, []);
 
+  // Activity heartbeat for ALL authenticated users (directors and captains)
+  useEffect(() => {
+    if (isAuthenticated && loginName) {
+      // Update immediately on login
+      updateSessionActivity();
+
+      // Then update every 60 seconds
+      const interval = setInterval(() => {
+        updateSessionActivity();
+      }, 60000); // Every 60 seconds
+
+      return () => clearInterval(interval);
+    }
+  }, [isAuthenticated, loginName]);
+
   // Post-login redirect handling - uses new redirectManager for all protected actions
   useEffect(() => {
     if (isAuthenticated) {
@@ -678,46 +704,123 @@ const App = () => {
     }
   }, [isAuthenticated, navigate]);
 
+  // Session validation and inactivity check (runs every 5 seconds)
   useEffect(() => {
     const checkSessionValidity = async () => {
       if (isAuthenticated) {
-        const authData = await tournamentStorage.getAuthSession();
-        if (authData) {
-          const session = JSON.parse(authData.data);
+        const session = await tournamentStorage.getAuthSession();
+        if (session) {
           const now = Date.now();
           const expiresAt = new Date(session.expiresAt).getTime();
+          const lastActivity = session.lastActivity ? new Date(session.lastActivity).getTime() : now;
+          const inactivityLimit = 30 * 60 * 1000; // 30 minutes
+          const warningThreshold = 28 * 60 * 1000; // 28 minutes (2 min warning)
+          const timeSinceActivity = now - lastActivity;
 
+          // Check 24-hour session expiry
           if (now >= expiresAt) {
             setIsAuthenticated(false);
             setLoginName('');
             setUserRole('');
             setUserTeamId(null);
-            tournamentStorage.deleteAuthSession();
+            await tournamentStorage.deleteAuthSession();
             setActiveTab('leaderboard');
-            alert('Your session has expired due to inactivity.\n\nPlease log in again to continue.');
+            setShowInactivityWarning(false);
+            alert('Your session has expired (24 hours).\n\nPlease log in again to continue.');
+            return;
+          }
+
+          // Check 30-minute inactivity
+          if (timeSinceActivity >= inactivityLimit) {
+            setIsAuthenticated(false);
+            setLoginName('');
+            setUserRole('');
+            setUserTeamId(null);
+            await tournamentStorage.deleteAuthSession();
+            setActiveTab('leaderboard');
+            setShowInactivityWarning(false);
+            alert('Your session has expired due to 30 minutes of inactivity.\n\nPlease log in again to continue.');
+            return;
+          }
+
+          // Show warning at 28 minutes (2 minutes before logout)
+          if (timeSinceActivity >= warningThreshold && !showInactivityWarning) {
+            const secondsLeft = Math.floor((inactivityLimit - timeSinceActivity) / 1000);
+            setInactivityTimeLeft(secondsLeft);
+            setShowInactivityWarning(true);
+          }
+
+          // Update countdown if warning is showing
+          if (showInactivityWarning) {
+            const secondsLeft = Math.floor((inactivityLimit - timeSinceActivity) / 1000);
+            setInactivityTimeLeft(secondsLeft);
           }
         } else {
+          // Session doesn't exist
           setIsAuthenticated(false);
           setLoginName('');
           setUserRole('');
           setUserTeamId(null);
           setActiveTab('leaderboard');
+          setShowInactivityWarning(false);
         }
       }
     };
 
-    const intervalId = setInterval(checkSessionValidity, 60 * 1000);
+    const intervalId = setInterval(checkSessionValidity, 5 * 1000); // Check every 5 seconds for better warning accuracy
 
     return () => clearInterval(intervalId);
-  }, [isAuthenticated]);
+  }, [isAuthenticated, showInactivityWarning]);
 
+  // Activity tracking - update lastActivity on user interactions
+  useEffect(() => {
+    if (!isAuthenticated) return;
 
-  const handleLogin = () => {
+    let lastUpdateTime = 0;
+    const UPDATE_THROTTLE = 60 * 1000; // Update max once per minute
+
+    const handleUserActivity = async () => {
+      const now = Date.now();
+
+      // Throttle updates to once per minute
+      if (now - lastUpdateTime < UPDATE_THROTTLE) return;
+
+      lastUpdateTime = now;
+
+      // Update lastActivity timestamp
+      await tournamentStorage.updateSessionActivity();
+
+      // Hide warning if user becomes active
+      if (showInactivityWarning) {
+        setShowInactivityWarning(false);
+      }
+    };
+
+    // Listen for various user interaction events
+    const events = ['mousedown', 'keydown', 'scroll', 'touchstart', 'click'];
+    events.forEach(event => {
+      window.addEventListener(event, handleUserActivity, { passive: true });
+    });
+
+    return () => {
+      events.forEach(event => {
+        window.removeEventListener(event, handleUserActivity);
+      });
+    };
+  }, [isAuthenticated, showInactivityWarning]);
+
+  // Function to extend session when user clicks "Stay Logged In" in warning modal
+  const handleStayLoggedIn = async () => {
+    await tournamentStorage.updateSessionActivity();
+    setShowInactivityWarning(false);
+  };
+
+  const handleLogin = async () => {
     const normalizedUsername = loginName.trim();
 
     if (loginRole === 'director') {
-      const director = TOURNAMENT_DIRECTORS.find(d => 
-        d.username === normalizedUsername && 
+      const director = TOURNAMENT_DIRECTORS.find(d =>
+        d.username === normalizedUsername &&
         d.password === loginPassword
       );
 
@@ -725,20 +828,25 @@ const App = () => {
         setIsAuthenticated(true);
         setUserRole('director');
         setUserTeamId(null);
-        const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
-        tournamentStorage.setAuthSession(JSON.stringify({
+        const now = new Date();
+        const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString(); // 24 hours
+
+        // Pass object directly (no JSON.stringify - storage.js handles it)
+        tournamentStorage.setAuthSession({
           username: director.username,
           name: director.name,
           role: 'director',
           teamId: null,
-          timestamp: new Date().toISOString(),
+          timestamp: now.toISOString(),
+          lastActivity: now.toISOString(),
           expiresAt: expiresAt
-        }));
+        });
         setLoginName(director.name);
 
-        tournamentStorage.setActiveSession(director.name, 'director').then(() => {
-          alert('Welcome, ' + director.name + '!');
-        });
+        // Register director in active sessions and refresh list
+        await tournamentStorage.setActiveSession(director.name, 'director');
+        const sessions = await tournamentStorage.getActiveSessions();
+        setActiveSessions(sessions || []);
 
         const logEntry = createLogEntry(
           ACTION_TYPES.USER_LOGIN,
@@ -746,6 +854,8 @@ const App = () => {
           { role: 'director', username: director.username }
         );
         tournamentStorage.addActivityLog(logEntry);
+
+        alert('Welcome, ' + director.name + '!');
 
         setShowLogin(false);
         setLoginPassword('');
@@ -764,16 +874,23 @@ const App = () => {
         setIsAuthenticated(true);
         setUserRole('captain');
         setUserTeamId(captain.teamId);
-        const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
-        tournamentStorage.setAuthSession(JSON.stringify({
+        const now = new Date();
+        const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString(); // 24 hours
+
+        // Pass object directly (no JSON.stringify - storage.js handles it)
+        tournamentStorage.setAuthSession({
           username: captain.username,
           name: captain.name,
           role: 'captain',
           teamId: captain.teamId,
-          timestamp: new Date().toISOString(),
+          timestamp: now.toISOString(),
+          lastActivity: now.toISOString(),
           expiresAt: expiresAt
-        }));
+        });
         setLoginName(captain.name);
+
+        // Register captain in active sessions (visible to directors)
+        await tournamentStorage.setActiveSession(captain.name, 'captain');
 
         const team = teams.find(t => t.id === captain.teamId);
         const logEntry = createLogEntry(
@@ -782,6 +899,10 @@ const App = () => {
           { role: 'captain', username: captain.username, teamName: team?.name || 'Unassigned' }
         );
         tournamentStorage.addActivityLog(logEntry);
+
+        // Refresh active sessions to show captain in UI
+        const sessions = await tournamentStorage.getActiveSessions();
+        setActiveSessions(sessions || []);
 
         setShowLogin(false);
         setLoginPassword('');
@@ -1399,6 +1520,40 @@ const App = () => {
         setShowLogin={setShowLogin}
         tournamentDirectors={TOURNAMENT_DIRECTORS}
       />
+
+      {/* Inactivity Warning Modal */}
+      {showInactivityWarning && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+          <div className="bg-white rounded-lg shadow-2xl p-8 max-w-md w-full mx-4 animate-fade-in">
+            <div className="flex items-center justify-center mb-6">
+              <div className="bg-yellow-100 rounded-full p-4">
+                <svg className="w-12 h-12 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+            </div>
+
+            <h2 className="text-2xl font-bold text-center mb-4 text-gray-900">
+              Session Timeout Warning
+            </h2>
+
+            <p className="text-center text-gray-700 mb-6">
+              You will be logged out in <span className="font-bold text-red-600">{inactivityTimeLeft}</span> seconds due to inactivity.
+            </p>
+
+            <p className="text-center text-sm text-gray-600 mb-8">
+              Click "Stay Logged In" to continue your session, or you will be automatically logged out.
+            </p>
+
+            <button
+              onClick={handleStayLoggedIn}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors duration-200 shadow-md hover:shadow-lg"
+            >
+              Stay Logged In
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Toast Notification */}
       {showToast && (
