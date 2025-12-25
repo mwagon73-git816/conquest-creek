@@ -56,7 +56,7 @@ const ChampionshipModal = ({ isOpen, onClose }) => {
 
         {/* Content */}
         <div className="px-4 sm:px-6 py-6 space-y-8">
-          {/* Epic Battle Background - Visual Only */}
+          {/* Epic Battle Background - Full Color */}
           <div
             className="rounded-lg relative overflow-hidden min-h-[350px] sm:min-h-[450px]"
             style={{
@@ -65,8 +65,6 @@ const ChampionshipModal = ({ isOpen, onClose }) => {
               backgroundPosition: 'center'
             }}
           >
-            {/* Reduced transparency overlay - lets image show through more */}
-            <div className="absolute inset-0 bg-white/35"></div>
           </div>
 
           <hr className="border-gray-300 my-6" />
