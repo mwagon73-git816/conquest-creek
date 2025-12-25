@@ -44,11 +44,7 @@ const ChampionshipModal = ({ isOpen, onClose }) => {
         onClick={(e) => e.stopPropagation()} // Prevent closing when clicking inside
       >
         {/* Header with Close Button */}
-        <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between z-10">
-          <div className="flex items-center gap-2">
-            <Trophy className="w-6 h-6 text-yellow-600" />
-            <h2 className="text-2xl font-bold text-gray-900">Championship Weekend Details</h2>
-          </div>
+        <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-end z-10">
           <button
             onClick={onClose}
             className="text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-full p-2 transition-all"
@@ -60,14 +56,17 @@ const ChampionshipModal = ({ isOpen, onClose }) => {
 
         {/* Content */}
         <div className="px-4 sm:px-6 py-6 space-y-8">
-          {/* Championship Weekend Title */}
-          <div className="text-center bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg py-4 px-4">
-            <h3 className="text-xl sm:text-2xl font-bold text-gray-900">
-              Championship Weekend
-            </h3>
-            <p className="text-lg sm:text-xl text-blue-600 font-semibold mt-1">
-              February 6-7, 2026
-            </p>
+          {/* Epic Battle Background - Visual Only */}
+          <div
+            className="rounded-lg relative overflow-hidden min-h-[350px] sm:min-h-[450px]"
+            style={{
+              backgroundImage: 'url(/images/epic-tennis-battle.jpg)',
+              backgroundSize: 'cover',
+              backgroundPosition: 'center'
+            }}
+          >
+            {/* Reduced transparency overlay - lets image show through more */}
+            <div className="absolute inset-0 bg-white/35"></div>
           </div>
 
           <hr className="border-gray-300 my-6" />
@@ -115,18 +114,18 @@ const ChampionshipModal = ({ isOpen, onClose }) => {
           {/* Championship Phase */}
           <section className="space-y-4">
             <div>
-              <h4 className="text-lg sm:text-xl font-bold text-blue-700 mb-2 pb-2 border-b-2 border-blue-200">
+              <h4 className="text-lg sm:text-xl font-bold text-blue-700 mb-2 pb-2 border-blue-200">
                 Championship Phase: Laver Cup Drama
               </h4>
               <p className="text-gray-600 text-sm sm:text-base font-semibold italic mt-2">
-                First Weekend of February 2026
+                February 7, 2026
               </p>
             </div>
 
             <div className="space-y-4">
               {/* Format Overview */}
               <div className="bg-gray-50 rounded-lg p-4">
-                <p className="font-bold text-gray-900 mb-2">Single Weekend Showdown</p>
+                <p className="font-bold text-gray-900 mb-2">Single Day Showdown</p>
                 <p className="text-gray-700 leading-relaxed text-sm sm:text-base">
                   Top 2 teams play a best-of-6 doubles series at varied levels (6.0–8.0).
                   First 3 matches: 1 point each; next 4: 2 points each. First to majority wins.
@@ -138,7 +137,7 @@ const ChampionshipModal = ({ isOpen, onClose }) => {
               <div className="bg-green-50 border-l-4 border-green-400 p-4">
                 <p className="font-bold text-gray-900 mb-1">When</p>
                 <p className="text-gray-700 text-sm sm:text-base">
-                  The Championship will be played the weekend of <span className="font-semibold">February 6-7, 2026</span>.
+                  The Championship will be played on <span className="font-semibold">February 7, 2026</span>.
                 </p>
               </div>
 

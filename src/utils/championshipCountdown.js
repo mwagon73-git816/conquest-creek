@@ -3,8 +3,8 @@
  * Calculates days until Championship Weekend and returns appropriate message
  */
 
-const CHAMPIONSHIP_START_DATE = new Date('2026-02-06T00:00:00');
-const CHAMPIONSHIP_END_DATE = new Date('2026-02-08T23:59:59'); // Hide after Feb 8
+const CHAMPIONSHIP_START_DATE = new Date('2026-02-07T00:00:00');
+const CHAMPIONSHIP_END_DATE = new Date('2026-02-07T23:59:59'); // Hide after Feb 7
 
 /**
  * Calculate days until Championship Weekend
@@ -26,7 +26,7 @@ export const getChampionshipCountdown = () => {
   if (daysUntil <= 0) {
     return {
       daysUntil: 0,
-      message: '🏆 Championship Weekend is TODAY! February 6-7',
+      message: '🏆 Championship Weekend is TODAY! Feb 7',
       shouldShow: true
     };
   }
@@ -36,13 +36,13 @@ export const getChampionshipCountdown = () => {
 
   if (daysUntil >= 30) {
     // 30+ days out
-    message = `🏆 Championship Weekend in ${daysUntil} days! February 6-7, 2026`;
+    message = `🏆 Championship Weekend in ${daysUntil} days! Feb 7, 2026`;
   } else if (daysUntil >= 7) {
     // 7-29 days
-    message = `🏆 Championship Weekend in ${daysUntil} days! February 6-7 - Get ready!`;
+    message = `🏆 Championship Weekend in ${daysUntil} days! Feb 7 - Get ready!`;
   } else {
     // 1-6 days - THIS WEEK
-    message = `🏆 Championship Weekend in ${daysUntil} days! THIS WEEK: February 6-7!`;
+    message = `🏆 Championship Weekend in ${daysUntil} days! THIS WEEK: Feb 7!`;
   }
 
   return { daysUntil, message, shouldShow: true };
