@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { APP_VERSION } from '../version';
 import { getSeasonalTheme, getThemeTextColors, getSeasonalMessage } from '../utils/seasonalTheme';
+import { useChampionshipCountdown } from '../utils/championshipCountdown';
+import ChampionshipModal from './ChampionshipModal';
 
 const INSTAGRAM_URL = 'https://instagram.com/conquestofthecreek';
 
@@ -66,6 +68,12 @@ const Header = ({
   const textColors = getThemeTextColors(theme.name);
   const seasonalMessage = getSeasonalMessage(theme.name);
 
+  // Get Championship Weekend countdown
+  const championshipCountdown = useChampionshipCountdown();
+
+  // Championship modal state
+  const [showChampionshipModal, setShowChampionshipModal] = useState(false);
+
   return (
     <div
       className="text-white rounded-lg shadow-lg p-6 mb-6 relative overflow-hidden"
@@ -125,6 +133,28 @@ const Header = ({
           )}
         </div>
       </div>
+
+      {/* Championship Weekend Countdown - Positioned in lower right corner */}
+      {championshipCountdown.shouldShow && (
+        <button
+          onClick={() => setShowChampionshipModal(true)}
+          className="absolute bottom-2 right-2 sm:bottom-4 sm:right-4 z-20 text-right max-w-[calc(100%-1rem)] sm:max-w-md cursor-pointer group transition-all hover:scale-105"
+          aria-label="View Championship Weekend details"
+        >
+          <div className="text-xs sm:text-base font-bold text-white bg-black/20 backdrop-blur-md px-2 py-1 sm:px-3 sm:py-2 rounded-md drop-shadow-lg break-words group-hover:bg-black/30 transition-all" style={{ textShadow: '0 2px 8px rgba(0, 0, 0, 0.8)' }}>
+            {championshipCountdown.message}
+            <span className="block text-[10px] sm:text-xs mt-0.5 opacity-80 group-hover:opacity-100">
+              Click for details
+            </span>
+          </div>
+        </button>
+      )}
+
+      {/* Championship Modal */}
+      <ChampionshipModal
+        isOpen={showChampionshipModal}
+        onClose={() => setShowChampionshipModal(false)}
+      />
     </div>
   );
 };
