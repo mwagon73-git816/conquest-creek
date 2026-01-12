@@ -111,31 +111,17 @@ const ChampionshipModal = ({ isOpen, onClose }) => {
 
           {/* Championship Phase */}
           <section className="space-y-4">
-            <div>
-              <h4 className="text-lg sm:text-xl font-bold text-blue-700 mb-2 pb-2 border-blue-200">
-                Championship Phase: Laver Cup Drama
-              </h4>
-              <p className="text-gray-600 text-sm sm:text-base font-semibold italic mt-2">
-                February 7, 2026
-              </p>
-            </div>
+            <h4 className="text-lg sm:text-xl font-bold text-blue-700 mb-4 pb-2 border-b-2 border-blue-200">
+              Championship Phase: The Ultimate Showdown
+            </h4>
 
             <div className="space-y-4">
               {/* Format Overview */}
               <div className="bg-gray-50 rounded-lg p-4">
-                <p className="font-bold text-gray-900 mb-2">Single Day Showdown</p>
+                <p className="font-bold text-gray-900 mb-2">Single Day Championship</p>
                 <p className="text-gray-700 leading-relaxed text-sm sm:text-base">
-                  Top 2 teams play a best-of-6 doubles series at varied levels (6.0–8.0).
-                  First 3 matches: 1 point each; next 4: 2 points each. First to majority wins.
-                  Use full rosters if possible, rotate players; on-court coaching applies.
-                </p>
-              </div>
-
-              {/* Date/Time */}
-              <div className="bg-green-50 border-l-4 border-green-400 p-4">
-                <p className="font-bold text-gray-900 mb-1">When</p>
-                <p className="text-gray-700 text-sm sm:text-base">
-                  The Championship will be played on <span className="font-semibold">February 7, 2026</span>.
+                  The top 2 teams will compete in a thrilling single-day championship event featuring
+                  three rounds of escalating stakes.
                 </p>
               </div>
 
@@ -143,14 +129,14 @@ const ChampionshipModal = ({ isOpen, onClose }) => {
               <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-lg p-4 sm:p-6 border border-blue-200">
                 <h5 className="font-bold text-gray-900 text-base sm:text-lg mb-4 text-center">Match Schedule</h5>
 
-                {/* Matches 1-3 */}
+                {/* Round 1 */}
                 <div className="mb-6">
                   <div className="bg-white rounded-lg p-3 shadow-sm">
-                    <p className="font-bold text-blue-700 mb-3 text-sm sm:text-base">Matches 1-3 (1 point each)</p>
+                    <p className="font-bold text-blue-700 mb-3 text-sm sm:text-base">Round 1 (3 matches - 1 point each)</p>
                     <ul className="space-y-2">
                       <li className="flex items-center gap-2 text-gray-700 text-sm sm:text-base">
                         <span className="w-6 h-6 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0">1</span>
-                        <span>7.0 ladies doubles</span>
+                        <span>6.0 ladies doubles</span>
                       </li>
                       <li className="flex items-center gap-2 text-gray-700 text-sm sm:text-base">
                         <span className="w-6 h-6 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0">2</span>
@@ -164,10 +150,10 @@ const ChampionshipModal = ({ isOpen, onClose }) => {
                   </div>
                 </div>
 
-                {/* Matches 4-7 */}
-                <div>
+                {/* Round 2 */}
+                <div className="mb-6">
                   <div className="bg-white rounded-lg p-3 shadow-sm">
-                    <p className="font-bold text-purple-700 mb-3 text-sm sm:text-base">Matches 4-7 (2 points each)</p>
+                    <p className="font-bold text-purple-700 mb-3 text-sm sm:text-base">Round 2 (2 matches - 2 points each)</p>
                     <ul className="space-y-2">
                       <li className="flex items-center gap-2 text-gray-700 text-sm sm:text-base">
                         <span className="w-6 h-6 bg-purple-100 text-purple-700 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0">4</span>
@@ -175,23 +161,49 @@ const ChampionshipModal = ({ isOpen, onClose }) => {
                       </li>
                       <li className="flex items-center gap-2 text-gray-700 text-sm sm:text-base">
                         <span className="w-6 h-6 bg-purple-100 text-purple-700 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0">5</span>
-                        <span>7.5 mens doubles</span>
-                      </li>
-                      <li className="flex items-center gap-2 text-gray-700 text-sm sm:text-base">
-                        <span className="w-6 h-6 bg-purple-100 text-purple-700 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0">6</span>
                         <span>8.0 mens doubles</span>
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+
+                {/* Championship Final */}
+                <div>
+                  <div className="bg-gradient-to-br from-yellow-50 to-orange-50 rounded-lg p-3 shadow-sm border-2 border-yellow-300">
+                    <p className="font-bold text-orange-700 mb-3 text-sm sm:text-base">Championship Final (1 match - 3 points)</p>
+                    <ul className="space-y-2">
+                      <li className="flex items-center gap-2 text-gray-700 text-sm sm:text-base">
+                        <span className="w-6 h-6 bg-orange-100 text-orange-700 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0">6</span>
+                        <span>7.5 mixed doubles</span>
                       </li>
                     </ul>
                   </div>
                 </div>
               </div>
 
+              {/* Format Details */}
+              <div className="bg-blue-50 border-l-4 border-blue-400 p-4">
+                <p className="font-bold text-gray-900 mb-2">Format</p>
+                <p className="text-gray-700 leading-relaxed text-sm sm:text-base">
+                  First team to majority points wins the championship. Teams should use their full rosters
+                  and rotate players throughout the rounds. On-court coaching is permitted.
+                </p>
+              </div>
+
+              {/* Date/Time */}
+              <div className="bg-green-50 border-l-4 border-green-400 p-4">
+                <p className="font-bold text-gray-900 mb-1">When</p>
+                <p className="text-gray-700 text-sm sm:text-base">
+                  The Championship will be played on <span className="font-semibold">February 7, 2026</span>.
+                </p>
+              </div>
+
               {/* Officiating */}
               <div className="bg-gray-50 rounded-lg p-4">
                 <p className="font-bold text-gray-900 mb-2">Officiating</p>
                 <p className="text-gray-700 leading-relaxed text-sm sm:text-base">
-                  The Championship matches will have a chair umpire and linespeople if possible.
-                  The officials will only render a line-call decision if asked by the players.
+                  Championship matches will have a chair umpire and linespeople if possible.
+                  Officials will only render line-call decisions when requested by the players.
                 </p>
               </div>
 
@@ -201,9 +213,9 @@ const ChampionshipModal = ({ isOpen, onClose }) => {
                   <li className="flex gap-3 text-gray-700 text-sm sm:text-base">
                     <span className="text-blue-600 font-bold mt-0.5">•</span>
                     <div>
-                      <span className="font-bold">Reasoning:</span> The format builds tension like
-                      professional events, while tying into the party maximizes attendance and fun,
-                      ending the tournament on a high note.
+                      <span className="font-bold">Reasoning:</span> The escalating point structure builds
+                      tension and excitement throughout the day, with the championship potentially coming down
+                      to the final mixed doubles match—ensuring maximum drama and spectator engagement.
                     </div>
                   </li>
                 </ul>
