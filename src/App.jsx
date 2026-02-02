@@ -28,6 +28,7 @@ import DataSyncManager from './components/DataSyncManager';
 import ConflictResolutionModal from './components/ConflictResolutionModal';
 import ChallengePage from './components/ChallengePage';
 import BonusAudit from './components/BonusAudit';
+import PointsAudit from './components/PointsAudit';
 
 const App = () => {
   const navigate = useNavigate();
@@ -1430,13 +1431,57 @@ const App = () => {
     const bonusPoints = calculateBonusPoints(teamId);
     const cappedBonus = Math.min(bonusPoints, matchWinPoints * 0.25);
 
+    // Calculate minimum match penalty - 4 matches required PER MONTH
+    // Tournament months: November 2025 (index 10), December 2025 (index 11), January 2026 (index 0)
+    const MINIMUM_MATCHES_PER_MONTH = 4;
+    const PENALTY_PER_MONTH = -4;
+
+    // Group matches by month
+    const matchesByMonth = {
+      '2025-10': 0, // November 2025
+      '2025-11': 0, // December 2025
+      '2026-0': 0   // January 2026
+    };
+
+    teamMatches.forEach(match => {
+      const matchDate = new Date(match.date);
+      const year = matchDate.getFullYear();
+      const month = matchDate.getMonth();
+      const monthKey = `${year}-${month}`;
+
+      if (matchesByMonth.hasOwnProperty(monthKey)) {
+        matchesByMonth[monthKey]++;
+      }
+    });
+
+    // Calculate penalty for each month with < 4 matches
+    let penalty = 0;
+    let penaltyDetails = [];
+
+    Object.entries(matchesByMonth).forEach(([monthKey, count]) => {
+      if (count < MINIMUM_MATCHES_PER_MONTH) {
+        penalty += PENALTY_PER_MONTH;
+        const [year, monthIdx] = monthKey.split('-');
+        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const monthName = monthNames[parseInt(monthIdx)];
+        penaltyDetails.push(`${monthName} ${year}: ${count} matches (-4)`);
+      }
+    });
+
     console.log('=== TEAM POINTS CALCULATION ===');
     console.log('Team ID:', teamId);
+    console.log('Team Name:', teamName);
     console.log('Match Win Points:', matchWinPoints);
     console.log('Uncapped Bonus Points:', bonusPoints);
     console.log('25% Cap Amount:', matchWinPoints * 0.25);
     console.log('Capped Bonus Points:', cappedBonus);
-    console.log('Total Points:', matchWinPoints + cappedBonus);
+    console.log('Matches Played by Month:');
+    console.log(`  November 2025: ${matchesByMonth['2025-10']} matches`);
+    console.log(`  December 2025: ${matchesByMonth['2025-11']} matches`);
+    console.log(`  January 2026: ${matchesByMonth['2026-0']} matches`);
+    console.log('Penalty Details:', penaltyDetails.length > 0 ? penaltyDetails.join(', ') : 'None');
+    console.log('Total Penalty:', penalty);
+    console.log('Total Points:', matchWinPoints + cappedBonus + penalty);
     console.log('===============================\n');
 
     return {
@@ -1445,7 +1490,8 @@ const App = () => {
       matchLosses,
       bonusPoints,
       cappedBonus,
-      totalPoints: matchWinPoints + cappedBonus,
+      penalty,
+      totalPoints: matchWinPoints + cappedBonus + penalty,
       setsWon,
       gamesWon,
       matchesPlayed: teamMatches.length
@@ -1792,6 +1838,16 @@ const App = () => {
               matches={matches}
               players={players}
               bonusEntries={bonusEntries}
+            />
+          )}
+
+          {activeTab === 'points-audit' && (
+            <PointsAudit
+              teams={teams}
+              matches={matches}
+              players={players}
+              calculateTeamPoints={calculateTeamPoints}
+              calculateBonusPoints={calculateBonusPoints}
             />
           )}
         </div>

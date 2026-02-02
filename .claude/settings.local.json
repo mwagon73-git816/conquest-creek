@@ -15,7 +15,8 @@
       "Bash(node searchMatch.js:*)",
       "Bash(node analyzeUnmigratedMatches.js:*)",
       "Bash(node checkSpecificMatch.js:*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(npm start)"
     ],
     "deny": [],
     "ask": []

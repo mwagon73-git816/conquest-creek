@@ -72,6 +72,10 @@ const Leaderboard = ({ teams, getLeaderboard, photos, isAuthenticated, onDeleteP
           aValue = (a.bonusPoints || 0) - (a.cappedBonus || 0);
           bValue = (b.bonusPoints || 0) - (b.cappedBonus || 0);
           break;
+        case 'penalty':
+          aValue = a.penalty || 0;
+          bValue = b.penalty || 0;
+          break;
         case 'totalPoints':
           aValue = a.totalPoints;
           bValue = b.totalPoints;
@@ -178,6 +182,7 @@ const Leaderboard = ({ teams, getLeaderboard, photos, isAuthenticated, onDeleteP
               <SortableHeader column="totalBonus" label="Total Bonus" />
               <SortableHeader column="bonusApplied" label="Bonus Applied" />
               <SortableHeader column="unusedBonus" label="Unused Bonus" />
+              <SortableHeader column="penalty" label="Penalty" />
               <SortableHeader column="totalPoints" label="Total Pts" />
               <SortableHeader column="sets" label="Sets" />
               <SortableHeader column="games" label="Games" />
@@ -208,6 +213,9 @@ const Leaderboard = ({ teams, getLeaderboard, photos, isAuthenticated, onDeleteP
                 </td>
                 <td className="text-center p-2 text-sm font-semibold text-orange-600">
                   {formatNTRP((team.bonusPoints || 0) - (team.cappedBonus || 0))}
+                </td>
+                <td className="text-center p-2 text-sm font-semibold text-red-600">
+                  {team.penalty || 0}
                 </td>
                 <td className="text-center p-2 font-bold text-lg text-blue-600">{formatNTRP(team.totalPoints)}</td>
                 <td className="text-center p-2 text-sm text-gray-600">{team.setsWon}</td>
